@@ -1,0 +1,41 @@
+# ── Secrets — NEVER commit ───────────────────────────────────
+.env
+client_secrets.json
+token.json
+token.pickle
+
+# ── Generated / runtime files ────────────────────────────────
+data/
+audio/
+images/
+output/
+logs/
+*.mp4
+*.mp3
+*.jpg
+*.jpeg
+*.db
+thumbnail.jpg
+
+# ── Python ───────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── macOS ────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

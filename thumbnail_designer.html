@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>YT Thumbnail Designer + Dual Mode Pipeline</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#0c0c10;--bg2:#13131a;--bg3:#1c1c26;--bg4:#242432;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.14);
+  --text:#ededf5;--muted:#6b6b88;--dim:#44445a;
+  --accent:#7c6dfa;--accent2:#fa6d9a;
+  --green:#3ddba0;--amber:#f7c24e;--red:#f76e6e;--teal:#3dcbdb;--r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}
+h2{font-size:16px;font-weight:700;margin-bottom:14px}
+.section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.section-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-weight:500}
+input,textarea,select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:inherit;font-size:13px;padding:7px 10px;outline:none;transition:border-color .2s;margin-bottom:9px}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:60px;line-height:1.6}
+select option{background:var(--bg2)}
+input[type=color]{padding:3px;height:36px;cursor:pointer;border-radius:5px}
+input[type=range]{padding:0;height:auto;background:transparent;border:none;margin:0;cursor:pointer;-webkit-appearance:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent)}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--bg4);border-radius:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:#6a5de8}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--border2);background:var(--bg4)}
+.btn-green{background:rgba(61,219,160,.15);color:var(--green);border:1px solid rgba(61,219,160,.3)}
+.btn-amber{background:rgba(247,194,78,.12);color:var(--amber);border:1px solid rgba(247,194,78,.3)}
+.btn-sm{padding:5px 10px;font-size:11px;border-radius:6px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.code-box{background:#080810;border:1px solid var(--border);border-radius:7px;padding:12px;font-size:11px;line-height:1.6;color:#8fdc8f;white-space:pre;font-family:'JetBrains Mono',monospace;overflow:auto;max-height:400px}
+.copy-btn{background:var(--bg4);border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:5px;font-size:10px;cursor:pointer;font-family:inherit;font-weight:600}
+.copy-btn:hover{color:var(--text)}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.tag-green{background:rgba(61,219,160,.1);color:var(--green)}
+.tag-amber{background:rgba(247,194,78,.1);color:var(--amber)}
+.tag-accent{background:rgba(124,109,250,.12);color:var(--accent)}
+.mode-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.mode-card{border:2px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:all .2s;background:var(--bg2)}
+.mode-card:hover{border-color:var(--border2)}
+.mode-card.active{border-color:var(--accent);background:rgba(124,109,250,.07)}
+.mode-card input{display:none}
+.mode-title{font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.mode-desc{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px}
+.canvas-wrap{background:var(--bg3);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+canvas{display:block;width:100%;height:auto}
+.template-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tpl-pill{padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid var(--border);cursor:pointer;background:var(--bg3);color:var(--muted);transition:all .15s}
+.tpl-pill:hover{border-color:var(--accent);color:var(--text)}
+.tpl-pill.active{background:rgba(124,109,250,.2);border-color:var(--accent);color:var(--accent)}
+.mini-tabs{display:flex;gap:3px;background:var(--bg3);padding:3px;border-radius:8px;margin-bottom:12px}
+.mini-tab{padding:5px 12px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600;transition:all .15s}
+.mini-tab.active{background:var(--accent);color:#fff}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.info-box{background:rgba(124,109,250,.07);border:1px solid rgba(124,109,250,.18);border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--muted);line-height:1.7}
+.info-box strong{color:var(--accent)}
+.scroll-box{background:var(--bg3);border-radius:7px;padding:13px;font-size:13px;line-height:1.8;white-space:pre-wrap;max-height:380px;overflow-y:auto}
+hr.div{border:none;border-top:1px solid var(--border);margin:12px 0}
+</style>
+</head>
+<body>
+<h2>&#127909; YouTube Dual Mode Pipeline + Thumbnail Designer</h2>
+
+<div class="section">
+  <div class="section-title">Channel mode</div>
+  <div class="mode-row">
+    <label class="mode-card active" id="mode-a-card" onclick="setMode('faceless')">
+      <input type="radio" name="mode" value="faceless" checked/>
+      <div class="mode-title">&#129302; Mode A &mdash; Fully automated <span class="tag tag-green">No recording needed</span></div>
+      <div class="mode-desc">100% AI pipeline. Script, voice, stock footage, thumbnail. No human involvement. Best for testing topics and building volume.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="tag tag-green">$28/mo</span>
+        <span class="tag tag-accent">5 videos/week</span>
+        <span class="tag tag-amber">CTR: 2-4%</span>
+      </div>
+    </label>
+    <label class="mode-card" id="mode-b-card" onclick="setMode('hybrid')">
+      <input type="radio" name="mode" value="hybrid"/>
+      <div class="mode-title">&#127909; Mode B &mdash; Kamil hybrid <span class="tag tag-amber">20 min/video</span></div>
+      <div class="mode-desc">Kamil records 60-90 sec intro + outro. AI writes script, generates rest of video, puts his face on thumbnail. Best for growth.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="tag tag-amber">$28/mo</span>
+        <span class="tag tag-accent">4 videos/week</span>
+        <span class="tag tag-green">CTR: 7-12%</span>
+      </div>
+    </label>
+  </div>
+  <div id="mode-a-options">
+    <div class="grid2">
+      <div><label>AI voice style</label><select id="a-voice">
+        <option>Authoritative English South Asian</option>
+        <option>Conversational Hinglish warm</option>
+        <option>Dramatic suspenseful</option>
+        <option>Calm educational</option>
+      </select></div>
+      <div><label>Visual style</label><select id="a-visual">
+        <option>Stock photos from Pexels</option>
+        <option>Maps and data visuals</option>
+        <option>News-style B-roll</option>
+        <option>Cinematic landscapes</option>
+      </select></div>
+    </div>
+  </div>
+  <div id="mode-b-options" style="display:none">
+    <div class="info-box"><strong>Kamil records once per video:</strong> 60-90 second intro to camera (AI provides the exact words). AI narrates the rest over stock footage. His face appears at the start and goes on the thumbnail. Total recording time: 5-10 minutes including retakes.</div>
+    <div class="grid2">
+      <div><label>Intro style</label><select id="b-intro">
+        <option>Direct address shocking hook</option>
+        <option>Journalist standing report</option>
+        <option>Casual talking to camera</option>
+        <option>Reaction to news clip</option>
+      </select></div>
+      <div><label>Recording background</label><select id="b-bg">
+        <option>Plain dark background professional</option>
+        <option>Home office bookshelf</option>
+        <option>Outdoor city location</option>
+        <option>Green screen</option>
+      </select></div>
+    </div>
+    <label>Paste transcript (what Kamil already said on camera, optional)</label>
+    <textarea id="b-transcript" placeholder="Leave blank to generate a script for him to read..."></textarea>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Thumbnail designer &mdash; live canvas preview</div>
+  <div class="template-row">
+    <button class="tpl-pill active" onclick="setTpl('impact',this)">&#9889; Impact text</button>
+    <button class="tpl-pill" onclick="setTpl('face-left',this)">&#128100; Face left</button>
+    <button class="tpl-pill" onclick="setTpl('face-right',this)">&#128100; Face right</button>
+    <button class="tpl-pill" onclick="setTpl('split',this)">&#9646;&#9646; Split</button>
+    <button class="tpl-pill" onclick="setTpl('news',this)">&#128240; News</button>
+    <button class="tpl-pill" onclick="setTpl('minimal',this)">&#9632; Minimal</button>
+  </div>
+  <div class="grid2" style="gap:16px;align-items:start">
+    <div>
+      <label>Headline line 1</label><input type="text" id="t-line1" value="CHINA NE PAKISTAN" oninput="drawThumb()"/>
+      <label>Headline line 2</label><input type="text" id="t-line2" value="KO IGNORE KIYA?" oninput="drawThumb()"/>
+      <label>Badge text</label><input type="text" id="t-badge" value="EXCLUSIVE REPORT" oninput="drawThumb()"/>
+      <label>Channel name</label><input type="text" id="t-channel" value="Kamil Mir" oninput="drawThumb()"/>
+      <div class="grid2">
+        <div><label>Headline colour</label><input type="color" id="t-hc" value="#FFD700" oninput="drawThumb()"/></div>
+        <div><label>Accent colour</label><input type="color" id="t-ac" value="#7c6dfa" oninput="drawThumb()"/></div>
+        <div><label>Background</label><input type="color" id="t-bgc" value="#0d0a14" oninput="drawThumb()"/></div>
+        <div><label>Text style</label><select id="t-ts" onchange="drawThumb()">
+          <option value="shadow">Drop shadow</option>
+          <option value="outline">Stroke outline</option>
+          <option value="bold">Bold only</option>
+        </select></div>
+      </div>
+      <div style="margin-top:4px">
+        <label>Text size: <span id="t-sv">72</span>px</label>
+        <input type="range" id="t-sz" min="40" max="100" value="72" oninput="document.getElementById('t-sv').textContent=this.value;drawThumb()"/>
+      </div>
+      <div style="margin-top:8px">
+        <label>Upload face photo (Mode B thumbnail)</label>
+        <input type="file" id="t-photo" accept="image/*" onchange="loadFace(this)" style="background:var(--bg3);padding:6px"/>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" id="ai-t-btn" onclick="aiThumb()"><span id="ai-t-icon">&#9889;</span> AI text</button>
+        <button class="btn btn-ghost btn-sm" onclick="dlThumb()">&#11015; Download PNG</button>
+      </div>
+    </div>
+    <div>
+      <div class="canvas-wrap"><canvas id="tc" width="1280" height="720"></canvas></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center">1280x720 YouTube spec</div>
+      <div id="shot-guide" style="display:none;margin-top:12px;background:var(--bg3);border-radius:7px;padding:12px;font-size:12px;line-height:1.9;color:var(--muted)">
+        <strong style="color:var(--amber)">Shot guide for Kamil:</strong><br/>
+        1. Dark/neutral background &bull; 2. Look directly at camera<br/>
+        3. Expression: <strong style="color:var(--amber)" id="sg-expr">SHOCK / CONCERN</strong><br/>
+        4. Solid colour shirt &bull; 5. Phone horizontal &bull; 6. Good lighting
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Script generator</div>
+  <label>Video topic</label>
+  <input type="text" id="s-topic" placeholder="e.g. China's Belt and Road impact on Pakistan economy"/>
+  <div class="grid2">
+    <div><label>Duration</label><select id="s-dur">
+      <option value="6-8 minutes">6-8 min</option>
+      <option value="8-12 minutes" selected>8-12 min</option>
+      <option value="12-15 minutes">12-15 min</option>
+    </select></div>
+    <div><label>Language</label><select id="s-lang">
+      <option value="Hinglish casual mix" selected>Hinglish</option>
+      <option value="Urdu with English terms">Urdu + English</option>
+      <option value="English South Asian tone">English</option>
+    </select></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="gs-btn" onclick="genScript()"><span id="gs-icon">&#9997;</span> Full script</button>
+    <button class="btn btn-ghost btn-sm" id="gl-btn" onclick="genShots()"><span id="gl-icon">&#127909;</span> Shot list</button>
+    <button class="btn btn-amber btn-sm" id="gsh-btn" onclick="genShort()"><span id="gsh-icon">&#9654;</span> 60s Short</button>
+  </div>
+  <div id="script-out" style="display:none;margin-top:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+      <div class="mini-tabs" style="margin:0">
+        <button class="mini-tab active" onclick="showStab('full',this)">Full script</button>
+        <button class="mini-tab" onclick="showStab('kamil',this)">Kamil lines</button>
+        <button class="mini-tab" onclick="showStab('ai',this)">AI narrator</button>
+        <button class="mini-tab" onclick="showStab('shots',this)">Shot list</button>
+      </div>
+      <button class="copy-btn" onclick="copyStab()">Copy</button>
+    </div>
+    <div id="stab-full" class="tab-panel active"><div class="scroll-box" id="sf"></div></div>
+    <div id="stab-kamil" class="tab-panel">
+      <div class="info-box"><strong>Kamil's lines only</strong> &mdash; print this or put on a second screen. He reads these to camera. Everything else is AI narrated.</div>
+      <div class="scroll-box" id="sk"></div>
+    </div>
+    <div id="stab-ai" class="tab-panel"><div class="scroll-box" id="sa"></div></div>
+    <div id="stab-shots" class="tab-panel">
+      <div class="info-box"><strong>Shot list for Kamil</strong> &mdash; exact instructions for every segment to record.</div>
+      <div class="scroll-box" id="ss"></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Updated Python pipeline files</div>
+  <div class="mini-tabs">
+    <button class="mini-tab active" onclick="showPCode('thumb',this)">thumbnail.py</button>
+    <button class="mini-tab" onclick="showPCode('hybrid',this)">hybrid_mode.py</button>
+    <button class="mini-tab" onclick="showPCode('main2',this)">main.py</button>
+  </div>
+  <div id="pcode-thumb">
+    <div style="display:flex;justify-content:space-between;margin-bottom:7px">
+      <span style="font-size:10px;color:var(--muted)">thumbnail.py</span>
+      <button class="copy-btn" onclick="copyPCode('pc-thumb')">Copy</button>
+    </div>
+    <div class="code-box" id="pc-thumb">"""thumbnail.py - Professional YouTube thumbnail generator.
+Supports faceless mode (stock BG) and hybrid mode (face photo).
+Output: 1280x720 JPEG."""
+import os
+from PIL import Image, ImageDraw, ImageFont
+
+def get_font(size):
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return ImageFont.truetype(p, size)
+    return ImageFont.load_default()
+
+def make_faceless_thumbnail(content, bg_path, out="thumbnail.jpg"):
+    W, H = 1280, 720
+    img = Image.open(bg_path).convert("RGB").resize((W,H), Image.LANCZOS)
+    ov = Image.new("RGBA",(W,H),(0,0,0,0))
+    from PIL import ImageDraw as ID
+    d2 = ID.Draw(ov)
+    for x in range(W):
+        d2.line([(x,0),(x,H)], fill=(0,0,0,int(190*(1-x/W*0.35))))
+    for y in range(H//2,H):
+        d2.line([(0,y),(W,y)], fill=(0,0,0,int(150*((y-H//2)/(H//2)))))
+    img = Image.alpha_composite(img.convert("RGBA"),ov).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(8,H)], fill=(124,109,250))
+    line1 = content.get("thumbnail_text","WATCH THIS").upper()
+    line2 = content.get("thumbnail_subtext","")
+    badge = content.get("badge","EXCLUSIVE").upper()
+    f1,f2,f3 = get_font(108),get_font(72),get_font(30)
+    def shadow_text(d,x,y,t,f,col):
+        d.text((x+4,y+4),t,font=f,fill=(0,0,0,200))
+        d.text((x,y),t,font=f,fill=col)
+    shadow_text(draw,60,80,line1,f1,(255,220,50))
+    if line2: shadow_text(draw,60,210,line2,f2,(255,255,255))
+    bw=len(badge)*14+40
+    draw.rounded_rectangle([(60,H-100),(60+bw,H-58)],radius=8,fill=(124,109,250))
+    draw.text((60+bw//2,H-79),badge,font=f3,fill=(255,255,255),anchor="mm")
+    ch = content.get("channel_name","")
+    if ch:
+        draw.text((W-40,H-36),"@"+ch,font=get_font(28),fill=(200,200,200),anchor="rs")
+    img.save(out,"JPEG",quality=95,optimize=True)
+    return out
+
+def make_hybrid_thumbnail(content, face_path, bg_path=None, out="thumbnail.jpg"):
+    W, H = 1280, 720
+    canvas = Image.new("RGB",(W,H),(10,8,20))
+    if bg_path and os.path.exists(bg_path):
+        bg = Image.open(bg_path).convert("RGB").resize((W,H),Image.LANCZOS)
+        bg_r = bg.crop((W//2,0,W,H))
+        dark = Image.new("RGB",bg_r.size,(0,0,0))
+        canvas.paste(Image.blend(bg_r,dark,0.65),(W//2,0))
+    face_w = int(W*0.45)
+    face = Image.open(face_path).convert("RGBA")
+    scale = H/face.height
+    nw = int(face.width*scale)
+    face = face.resize((nw,H),Image.LANCZOS)
+    left = max(0,(nw-face_w)//2)
+    face = face.crop((left,0,left+face_w,H))
+    mask = Image.new("L",(face_w,H),255)
+    from PIL import ImageDraw as ID
+    md = ID.Draw(mask)
+    bs = int(face_w*0.72)
+    for x in range(bs,face_w):
+        md.line([(x,0),(x,H)],fill=int(255*(1-(x-bs)/(face_w-bs))))
+    canvas.paste(face.convert("RGB"),(0,0),mask)
+    draw = ImageDraw.Draw(canvas)
+    ax = int(W*0.44)
+    draw.rectangle([(ax,0),(ax+6,H)],fill=(124,109,250))
+    tx = ax+40
+    line1 = content.get("thumbnail_text","BREAKING").upper()
+    line2 = content.get("thumbnail_subtext","")
+    badge = content.get("badge","KAMIL MIR").upper()
+    f1,f2,f3 = get_font(100),get_font(66),get_font(26)
+    def outlined(d,x,y,t,f,col=(255,220,50)):
+        d.text((x,y),t,font=f,fill=(0,0,0),stroke_width=4,stroke_fill=(0,0,0))
+        d.text((x,y),t,font=f,fill=col)
+    outlined(draw,tx,90,line1,f1)
+    if line2: outlined(draw,tx,220,line2,f2,(255,255,255))
+    bw=len(badge)*12+40
+    draw.rounded_rectangle([(tx,H-100),(tx+bw,H-58)],radius=8,fill=(124,109,250))
+    draw.text((tx+bw//2,H-79),badge,font=f3,fill=(255,255,255),anchor="mm")
+    canvas.save(out,"JPEG",quality=96,optimize=True)
+    return out
+
+def make_thumbnail(content, bg_path, face_path=None, mode="faceless"):
+    if mode=="hybrid" and face_path and os.path.exists(face_path):
+        return make_hybrid_thumbnail(content,face_path,bg_path)
+    return make_faceless_thumbnail(content,bg_path)
+</div>
+  </div>
+  <div id="pcode-hybrid" style="display:none">
+    <div style="display:flex;justify-content:space-between;margin-bottom:7px">
+      <span style="font-size:10px;color:var(--muted)">hybrid_mode.py</span>
+      <button class="copy-btn" onclick="copyPCode('pc-hybrid')">Copy</button>
+    </div>
+    <div class="code-box" id="pc-hybrid">"""hybrid_mode.py - Kamil hybrid video pipeline.
+Generates scripts with Kamil sections + AI narrator sections,
+shot lists, and stitches the final video together."""
+import os, json
+import anthropic
+from dotenv import load_dotenv
+load_dotenv()
+client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+LANG = os.getenv("CHANNEL_LANGUAGE","hinglish")
+AUD  = os.getenv("CHANNEL_AUDIENCE","South Asia and Gulf")
+
+def generate_hybrid_script(topic, transcript=None):
+    base = f"""Topic: \"{topic}\"
+Language: {LANG} | Audience: {AUD}
+Return ONLY valid JSON with these exact keys:
+{{
+  "title": "SEO title under 65 chars",
+  "description": "3 paragraphs + timestamps + 6 hashtags",
+  "tags": [...15 tags],
+  "thumbnail_text": "5-7 word ALL CAPS",
+  "thumbnail_subtext": "3-4 words",
+  "badge": "EXCLUSIVE",
+  "channel_name": "KamilMir",
+  "kamil_intro_script": "Exact words for Kamil to read. 60-90 sec. Shocking hook in Hinglish.",
+  "kamil_outro_script": "30-sec subscribe CTA from Kamil.",
+  "segments": [
+    {{"speaker":"KAMIL","text":"his lines","duration_s":80,"visual":"Kamil full screen","caption":"caption"}},
+    {{"speaker":"AI_NARRATOR","text":"narrator expansion","duration_s":50,"visual_keyword":"2-word search","caption":"caption"}}
+  ]
+}}
+Rules: Start with KAMIL, end with KAMIL outro. Min 12 segments."""
+    if transcript:
+        prompt = f"Kamil recorded this intro: \"{transcript}\". Build script around it.\n\n" + base
+    else:
+        prompt = "Write complete hybrid script.\n\n" + base
+    msg = client.messages.create(
+        model="claude-sonnet-4-20250514", max_tokens=4000,
+        messages=[{"role":"user","content":prompt}])
+    raw = msg.content[0].text
+    return json.loads(raw[raw.index("{"):raw.rindex("}")+1])
+
+def generate_shot_list(content):
+    segs = [s for s in content.get("segments",[]) if s["speaker"]=="KAMIL"]
+    total = sum(s.get("duration_s",60) for s in segs)
+    lines = ["="*48, f"SHOT LIST -- {content.get('title','Video')[:50]}",
+             f"Total Kamil recording: ~{total//60}min {total%60}s","="*48,""]
+    for i,seg in enumerate(segs,1):
+        lines += [f"SHOT {i} ({seg.get('duration_s',60)}s)",
+                  f"  Script: {seg['text'][:200]}{'...' if len(seg['text'])>200 else ''}",
+                  f"  Setting: {seg.get('visual','Look to camera')}",
+                  f"  Expression: {'SHOCK / HOOK' if i==1 else 'Engaged / authoritative'}",""]
+    lines += ["THUMBNAIL SHOT:","  Expression: SHOCK or CONCERN",
+              "  5 sec still, direct eye contact, dark background",""]
+    return "\n".join(lines)
+
+def build_hybrid_video(content, ai_audios, images, kamil_clips, out="final.mp4"):
+    from moviepy.editor import (VideoFileClip, ImageClip, AudioFileClip,
+        TextClip, CompositeVideoClip, concatenate_videoclips)
+    clips, ai_idx = [], 0
+    for i,seg in enumerate(content["segments"]):
+        cap = seg.get("caption","")
+        if seg["speaker"]=="KAMIL" and i in kamil_clips:
+            c = VideoFileClip(kamil_clips[i])
+        elif seg["speaker"]=="AI_NARRATOR" and ai_idx<len(ai_audios):
+            audio = AudioFileClip(ai_audios[ai_idx])
+            img = (ImageClip(images[min(ai_idx,len(images)-1)])
+                   .set_duration(audio.duration).resize(height=1080)
+                   .crop(x_center=960,y_center=540,width=1920,height=1080))
+            c = img.set_audio(audio); ai_idx+=1
+        else:
+            continue
+        if cap:
+            txt = (TextClip(cap,fontsize=50,color="white",stroke_color="black",
+                stroke_width=2,font="DejaVu-Sans-Bold",method="caption",size=(1700,None))
+                .set_position(("center",.84),relative=True).set_duration(c.duration))
+            c = CompositeVideoClip([c,txt])
+        clips.append(c)
+    final = concatenate_videoclips(clips,method="compose")
+    final.write_videofile(out,fps=24,codec="libx264",audio_codec="aac",threads=4,logger=None)
+    return out
+</div>
+  </div>
+  <div id="pcode-main2" style="display:none">
+    <div style="display:flex;justify-content:space-between;margin-bottom:7px">
+      <span style="font-size:10px;color:var(--muted)">main.py (updated)</span>
+      <button class="copy-btn" onclick="copyPCode('pc-main2')">Copy</button>
+    </div>
+    <div class="code-box" id="pc-main2">"""main.py (updated) - dual mode: faceless or hybrid.
+Set MODE=faceless or MODE=hybrid in .env
+Hybrid: place Kamil clips in ./kamil_clips/ as clip_0.mp4, clip_1.mp4...
+        Set FACE_PHOTO_PATH to a JPG of Kamil for thumbnails"""
+import os, sys, json, requests
+from pathlib import Path
+from dotenv import load_dotenv
+from thumbnail import make_thumbnail
+from database import log_video_start, log_video_complete, log_cost
+from voice_config import get_voice_settings
+
+load_dotenv()
+MODE       = os.getenv("MODE","faceless")
+FACE_PHOTO = os.getenv("FACE_PHOTO_PATH","")
+ANTHROPIC_KEY  = os.getenv("ANTHROPIC_API_KEY")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_API_KEY")
+VOICE_ID       = os.getenv("ELEVENLABS_VOICE_ID","JBFqnCBsd6RMkjVDRZzb")
+PEXELS_KEY     = os.getenv("PEXELS_API_KEY")
+NICHE    = os.getenv("CHANNEL_NICHE","personal finance")
+LANGUAGE = os.getenv("CHANNEL_LANGUAGE","hinglish")
+AUDIENCE = os.getenv("CHANNEL_AUDIENCE","South Asia and Gulf")
+SCOPES   = ["https://www.googleapis.com/auth/youtube.upload"]
+
+import anthropic as _an
+from elevenlabs.client import ElevenLabs
+from moviepy.editor import (ImageClip,AudioFileClip,TextClip,
+    CompositeVideoClip,concatenate_videoclips)
+from PIL import Image,ImageDraw,ImageFont
+from googleapiclient.discovery import build as yt_build
+from googleapiclient.http import MediaFileUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+ai = _an.Anthropic(api_key=ANTHROPIC_KEY)
+el = ElevenLabs(api_key=ELEVENLABS_KEY)
+
+# (generate_content, generate_audio, fetch_visuals, build_video, upload
+#  functions stay exactly the same as previous main.py)
+# ... paste them here ...
+
+def run(topic, transcript=None):
+    print(f"\n[{MODE.upper()}] Pipeline: {topic}")
+    vid_id = log_video_start(topic, NICHE, MODE)
+    try:
+        if MODE == "hybrid":
+            from hybrid_mode import generate_hybrid_script,generate_shot_list,build_hybrid_video
+            content = generate_hybrid_script(topic, transcript)
+            log_cost("anthropic","script",4000,0.09,vid_id)
+            # Print + save shot list
+            shots = generate_shot_list(content)
+            print("\n"+shots)
+            with open("shot_list.txt","w") as f: f.write(shots)
+            # Generate AI narrator audio only
+            ai_segs = [s for s in content["segments"] if s["speaker"]=="AI_NARRATOR"]
+            ai_content = {**content, "segments": ai_segs}
+            audio_files = generate_audio(ai_content)
+            log_cost("elevenlabs","tts",sum(len(s["text"]) for s in ai_segs),0.05,vid_id)
+            image_files = fetch_visuals(ai_content)
+            # Load any existing Kamil clips
+            kamil_clips = {}
+            for i,seg in enumerate(content["segments"]):
+                p = f"kamil_clips/clip_{i}.mp4"
+                if seg["speaker"]=="KAMIL" and os.path.exists(p):
+                    kamil_clips[i] = p
+            video = build_hybrid_video(content,audio_files,image_files,kamil_clips)
+            thumb = make_thumbnail(content,image_files[0],FACE_PHOTO or None,"hybrid")
+        else:
+            content = generate_content(topic)
+            log_cost("anthropic","script",3000,0.07,vid_id)
+            audio_files = generate_audio(content)
+            log_cost("elevenlabs","tts",4500,0.05,vid_id)
+            image_files = fetch_visuals(content)
+            video = build_video(content,audio_files,image_files)
+            thumb = make_thumbnail(content,image_files[0],mode="faceless")
+        yt_id = upload(video,thumb,content)
+        log_video_complete(vid_id,content["title"],yt_id,480)
+        print(f"\n Done: https://youtube.com/watch?v={yt_id}")
+        return yt_id
+    except Exception as e:
+        from database import log_video_error
+        log_video_error(vid_id,str(e)); raise
+
+if __name__=="__main__":
+    args=sys.argv[1:]
+    topic=args[0] if args else "China's Belt and Road impact on Pakistan"
+    transcript=args[1] if len(args)>1 else None
+    run(topic,transcript)
+</div>
+  </div>
+</div>
+
+<script>
+var currentMode='faceless',currentTpl='impact',faceImg=null,curStab='full';
+var sd={full:'',kamil:'',ai:'',shots:''};
+function getKey(){return localStorage.getItem('yt_key')||'';}
+
+function setMode(m){
+  currentMode=m;
+  document.getElementById('mode-a-card').classList.toggle('active',m==='faceless');
+  document.getElementById('mode-b-card').classList.toggle('active',m==='hybrid');
+  document.getElementById('mode-a-options').style.display=m==='faceless'?'block':'none';
+  document.getElementById('mode-b-options').style.display=m==='hybrid'?'block':'none';
+  document.getElementById('shot-guide').style.display=m==='hybrid'?'block':'none';
+  drawThumb();
+}
+
+function setTpl(t,el){
+  currentTpl=t;
+  document.querySelectorAll('.tpl-pill').forEach(function(p){p.classList.remove('active');});
+  if(el)el.classList.add('active');
+  drawThumb();
+}
+
+function loadFace(inp){
+  var file=inp.files[0];if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){var i=new Image();i.onload=function(){faceImg=i;drawThumb();};i.src=e.target.result;};
+  r.readAsDataURL(file);
+}
+
+function drawThumb(){
+  var cv=document.getElementById('tc'),ctx=cv.getContext('2d');
+  var W=1280,H=720;ctx.clearRect(0,0,W,H);
+  var hc=document.getElementById('t-hc').value;
+  var ac=document.getElementById('t-ac').value;
+  var bgc=document.getElementById('t-bgc').value;
+  var l1=document.getElementById('t-line1').value.toUpperCase();
+  var l2=document.getElementById('t-line2').value.toUpperCase();
+  var badge=document.getElementById('t-badge').value.toUpperCase();
+  var ch=document.getElementById('t-channel').value;
+  var sz=parseInt(document.getElementById('t-sz').value);
+  var ts=document.getElementById('t-ts').value;
+  var tpl=currentTpl;
+  var hasF=faceImg&&(currentMode==='hybrid'||tpl==='face-left'||tpl==='face-right');
+
+  ctx.fillStyle=bgc;ctx.fillRect(0,0,W,H);
+
+  if(hasF&&faceImg){
+    var fw=Math.round(W*0.44);
+    if(tpl==='face-right'){
+      ctx.drawImage(faceImg,W-fw,0,fw,H);
+      var g=ctx.createLinearGradient(W-fw,0,W-fw+140,0);
+      g.addColorStop(0,bgc);g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;ctx.fillRect(W-fw,0,140,H);
+    } else {
+      ctx.drawImage(faceImg,0,0,fw,H);
+      var g=ctx.createLinearGradient(fw-140,0,fw,0);
+      g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,bgc);
+      ctx.fillStyle=g;ctx.fillRect(fw-140,0,140,H);
+    }
+  }
+
+  // Accent bar
+  ctx.fillStyle=ac;
+  if(hasF){var sx=tpl==='face-right'?Math.round(W*0.53):Math.round(W*0.44);ctx.fillRect(sx,0,7,H);}
+  else{ctx.fillRect(0,0,7,H);}
+
+  var tx=hasF?(tpl==='face-right'?50:Math.round(W*0.46)):60;
+  var ty=tpl==='minimal'?H/2-sz:80;
+
+  function txt(x,y,t,size,col){
+    ctx.font='bold '+size+'px sans-serif';
+    if(ts==='outline'){ctx.strokeStyle='#000';ctx.lineWidth=8;ctx.strokeText(t,x,y);}
+    else if(ts==='shadow'){ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillText(t,x+5,y+5);}
+    ctx.fillStyle=col;ctx.fillText(t,x,y);ctx.lineWidth=1;
+  }
+
+  txt(tx,ty+sz,l1,sz,hc);
+  if(l2)txt(tx,ty+sz*2+14,l2,Math.round(sz*.7),'#fff');
+
+  if(tpl==='news'){
+    ctx.fillStyle='rgba(210,20,20,0.92)';ctx.fillRect(0,H-90,W,90);
+    ctx.fillStyle='#fff';ctx.font='bold 34px sans-serif';
+    ctx.fillText('BREAKING  \u00b7  '+ch.toUpperCase(),40,H-38);
+  } else if(badge){
+    var bw=badge.length*13+44,bh=40,bx=tx,by=H-95;
+    ctx.fillStyle=ac;
+    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,bw,bh,8);else ctx.rect(bx,by,bw,bh);
+    ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 22px sans-serif';
+    ctx.textAlign='center';ctx.fillText(badge,bx+bw/2,by+27);ctx.textAlign='left';
+  }
+
+  if(ch){
+    ctx.fillStyle='rgba(210,210,210,0.75)';ctx.font='500 26px sans-serif';
+    ctx.textAlign='right';ctx.fillText('@'+ch,W-30,H-28);ctx.textAlign='left';
+  }
+}
+
+function setBtn(id,icon,lbl,loading){
+  var b=document.getElementById(id),ic=document.getElementById(icon);
+  if(!b||!ic)return;b.disabled=loading;
+  ic.innerHTML=loading?'<span class="spinner"></span>':lbl;
+}
+
+async function callAI(prompt,tokens){
+  var key=getKey();
+  if(!key){alert('Add Anthropic API key in main dashboard Settings.');return '';}
+  var r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:tokens||2000,messages:[{role:'user',content:prompt}]})
+  });
+  if(!r.ok){var e=await r.json().catch(()=>({}));alert('API: '+(e.error&&e.error.message||r.status));return '';}
+  var d=await r.json();
+  return (d.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;}).join('\n');
+}
+
+async function aiThumb(){
+  var topic=document.getElementById('s-topic').value||document.getElementById('t-line1').value;
+  if(!topic){alert('Enter a topic first.');return;}
+  setBtn('ai-t-btn','ai-t-icon','&#9889;',true);
+  var raw=await callAI('YouTube thumbnail text for South Asian geopolitics/finance: "'+topic+'"\nReturn JSON only:\n{"line1":"5-6 word ALL CAPS","line2":"3-4 word ALL CAPS","badge":"EXCLUSIVE or BREAKING or REVEALED","expr":"emotion for face photo e.g. SHOCK, CONCERN, CONFIDENCE"}',400);
+  if(raw){
+    try{
+      var s=raw.indexOf('{'),e=raw.lastIndexOf('}')+1;
+      var d=JSON.parse(raw.slice(s,e));
+      if(d.line1)document.getElementById('t-line1').value=d.line1;
+      if(d.line2)document.getElementById('t-line2').value=d.line2;
+      if(d.badge)document.getElementById('t-badge').value=d.badge;
+      if(d.expr)document.getElementById('sg-expr').textContent=d.expr.toUpperCase();
+      drawThumb();
+    }catch(e){alert('Parse error.');}
+  }
+  setBtn('ai-t-btn','ai-t-icon','&#9889;',false);
+}
+
+function dlThumb(){
+  var cv=document.getElementById('tc');
+  var a=document.createElement('a');a.download='thumbnail_'+Date.now()+'.png';
+  a.href=cv.toDataURL('image/png');a.click();
+}
+
+async function genScript(){
+  var topic=document.getElementById('s-topic').value.trim();
+  if(!topic){alert('Enter a topic.');return;}
+  setBtn('gs-btn','gs-icon','&#9997;',true);
+  var lang=document.getElementById('s-lang').value;
+  var dur=document.getElementById('s-dur').value;
+  var isHybrid=currentMode==='hybrid';
+  var transcript=document.getElementById('b-transcript').value.trim();
+  var prompt;
+  if(isHybrid){
+    prompt='Write a hybrid YouTube script.\nTopic: "'+topic+'"\nLanguage: '+lang+'\nDuration: '+dur+'\n'+
+      (transcript?'Kamil recorded: "'+transcript.slice(0,200)+'"\n':'')+
+      '\nFormat exactly:\n[KAMIL INTRO -- 0:00]\n(60-90 sec, Kamil speaks to camera, shocking hook)\nHis words here...\n\n'+
+      '[AI NARRATOR -- 1:30]\n(Factual expansion over stock footage)\nNarration here...\n\n'+
+      '[KAMIL REACTION -- 4:00]\n(30-45 sec Kamil reacts)\nHis words...\n\n'+
+      '[AI NARRATOR -- 4:45]\nContinued narration...\n\n'+
+      '[KAMIL OUTRO -- 9:00]\n(30 sec subscribe CTA)\nHis words...\n\n'+
+      'Rules: Short sentences. Kamil lines in natural Hinglish. AI lines factual. Min 6 sections.';
+  } else {
+    prompt='Complete YouTube narration script.\nTopic: "'+topic+'"\nLanguage: '+lang+'\nDuration: '+dur+'\n\n'+
+      'Format:\n[HOOK -- 0:00]\n...\n\n[SEGMENT 1 -- title]\n...\n\n[OUTRO]\n...\n\n'+
+      'Rules: Short punchy sentences. Natural '+lang+'. 2-3 real stats. Each segment ends with curiosity hook.';
+  }
+  var out=await callAI(prompt,3500);
+  if(!out){setBtn('gs-btn','gs-icon','&#9997;',false);return;}
+  sd.full=out;
+  var kl=[],al=[],sl=['SHOT LIST\n'+'='.repeat(40)];
+  var cur='',sn=1;
+  out.split('\n').forEach(function(line){
+    if(line.startsWith('[KAMIL')){cur='k';kl.push(line);sl.push('\nSHOT '+sn+' -- '+line.replace(/[\[\]]/g,''));sn++;}
+    else if(line.startsWith('[AI')){cur='a';al.push(line);}
+    else if(cur==='k'){kl.push(line);sl.push(line.length<200?line:'  '+line.slice(0,180)+'...');}
+    else if(cur==='a'){al.push(line);}
+  });
+  sd.kamil=kl.length?kl.join('\n'):'(Switch to Hybrid mode for Kamil sections)';
+  sd.ai=al.length?al.join('\n'):out;
+  sl.push('\nTHUMBNAIL SHOT:\n  Expression: SHOCK/CONCERN\n  5 sec still, direct eye contact');
+  sd.shots=sl.join('\n');
+  document.getElementById('sf').textContent=sd.full;
+  document.getElementById('sk').textContent=sd.kamil;
+  document.getElementById('sa').textContent=sd.ai;
+  document.getElementById('ss').textContent=sd.shots;
+  document.getElementById('script-out').style.display='block';
+  aiThumb();
+  setBtn('gs-btn','gs-icon','&#9997;',false);
+}
+
+async function genShots(){
+  var topic=document.getElementById('s-topic').value.trim();
+  if(!topic){alert('Enter a topic.');return;}
+  setBtn('gl-btn','gl-icon','&#127909;',true);
+  var out=await callAI('Shot list for South Asian YouTube journalist.\nTopic: "'+topic+'"\n'+
+    'Numbered shots with: duration, exact script, emotion, setting. Include thumbnail shot at end. Plain text format.',700);
+  if(out){document.getElementById('ss').textContent=out;document.getElementById('script-out').style.display='block';showStab('shots',null);}
+  setBtn('gl-btn','gl-icon','&#127909;',false);
+}
+
+async function genShort(){
+  var topic=document.getElementById('s-topic').value.trim();
+  if(!topic){alert('Enter a topic.');return;}
+  setBtn('gsh-btn','gsh-icon','&#9654;',true);
+  var lang=document.getElementById('s-lang').value;
+  var out=await callAI('60-second YouTube Shorts script.\nTopic: "'+topic+'"\nLanguage: '+lang+'\n'+
+    (currentMode==='hybrid'?'Kamil speaks to camera directly.\n':'')+
+    'Format:\n[0:00 HOOK]...\n[0:08 MAIN POINT]...\n[0:25 FACT]...\n[0:50 CTA]...\nPunchy, one idea per second.',500);
+  if(out){document.getElementById('sf').textContent=out;document.getElementById('script-out').style.display='block';showStab('full',null);}
+  setBtn('gsh-btn','gsh-icon','&#9654;',false);
+}
+
+function showStab(n,el){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.mini-tab').forEach(function(t){t.classList.remove('active');});
+  var p=document.getElementById('stab-'+n);if(p)p.classList.add('active');
+  if(el)el.classList.add('active');
+  curStab=n;
+}
+
+function copyStab(){
+  var ids={full:'sf',kamil:'sk',ai:'sa',shots:'ss'};
+  var el=document.getElementById(ids[curStab]);
+  if(el)navigator.clipboard.writeText(el.textContent).catch(function(){});
+  event.target.textContent='Copied!';setTimeout(function(){event.target.textContent='Copy';},1500);
+}
+
+function showPCode(n,el){
+  ['thumb','hybrid','main2'].forEach(function(k){
+    var c=document.getElementById('pcode-'+k);if(c)c.style.display=k===n?'block':'none';
+  });
+  document.querySelectorAll('.mini-tab').forEach(function(t){t.classList.remove('active');});
+  if(el)el.classList.add('active');
+}
+
+function copyPCode(id){
+  var el=document.getElementById(id);
+  if(el)navigator.clipboard.writeText(el.textContent).catch(function(){});
+  event.target.textContent='Copied!';setTimeout(function(){event.target.textContent='Copy';},1500);
+}
+
+drawThumb();
+</script>
+</body>
+</html>

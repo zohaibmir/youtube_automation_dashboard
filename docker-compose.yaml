@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  # ── YouTube Automation Scheduler ──────────────────────────────
+  scheduler:
+    build: .
+    container_name: ytbot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Persistent data: database, generated videos, images, audio
+      - ./data:/app/data
+      - ./data/audio:/app/audio
+      - ./data/images:/app/images
+      - ./data/output:/app/output
+      # YouTube OAuth credentials (read-only)
+      - ./client_secrets.json:/app/client_secrets.json:ro
+    environment:
+      - DB_PATH=/app/data/yt_automation.db
+    # Keep container healthy — restart on crash
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; sqlite3.connect('/app/data/yt_automation.db')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ── HTML Dashboard — served at http://localhost:8080 ──────────
+  # Open youtube_automation_dashboard.html in your browser after starting.
+  # server.py serves /api/env so the Settings panel auto-fills from .env on load.
+  web:
+    image: python:3.11-slim
+    container_name: ytdash
+    working_dir: /app
+    volumes:
+      - .:/app:ro
+    ports:
+      - "8080:8080"
+    command: python server.py
+    restart: unless-stopped
+
+# ── Quick commands ────────────────────────────────────────────
+# Start everything:     docker compose up -d
+# Dashboard URL:        http://localhost:8080/youtube_automation_dashboard.html
+# Scheduler logs:       docker compose logs -f scheduler
+# Run one video:        docker compose run --rm scheduler python main.py "your topic"
+# DB stats:             docker compose exec scheduler python -c "from database import get_channel_stats; print(get_channel_stats())"
+# Shell into bot:       docker compose exec scheduler bash
+# Stop:                 docker compose down
+# Rebuild after code change: docker compose up -d --build scheduler
