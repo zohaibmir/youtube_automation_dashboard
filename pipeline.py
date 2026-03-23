@@ -8,7 +8,7 @@ All business logic lives in the modules it calls.
 import logging
 
 from audio_generator import generate_audio_segments
-from config import CHANNEL_LANGUAGE, CHANNEL_NICHE, VISUAL_MODE
+from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, VISUAL_MODE
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start
 from thumbnail import make_thumbnail
@@ -101,7 +101,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
             thumbnail_path = make_thumbnail(content, bg_path=thumb_bg)
 
         # Step 5 — Video assembly
-        video_path = build_video(segments, audio_files, visual_files, title=content.get("title"))
+        music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
+        video_path = build_video(segments, audio_files, visual_files,
+                                 title=content.get("title"), music_path=music)
 
         # Step 6 — Upload
         youtube_id = upload_video(video_path, thumbnail_path, content)
@@ -188,7 +190,9 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
             thumbnail_path = make_thumbnail(content, bg_path=thumb_bg)
 
         _p("Building video (this may take a few minutes)…")
-        video_path = build_video(segments, audio_files, visual_files, title=content.get("title"))
+        music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
+        video_path = build_video(segments, audio_files, visual_files,
+                                 title=content.get("title"), music_path=music)
 
         _p("✓ Video ready for review!")
         return video_path, thumbnail_path, content, vid_id

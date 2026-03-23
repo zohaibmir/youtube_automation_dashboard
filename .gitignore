@@ -9,8 +9,7 @@ data/
 audio/
 images/
 output/
-logs/
-*.mp4
+logs/music/*.mp4
 *.mp3
 *.jpg
 *.jpeg

@@ -1,24 +1,26 @@
 """audio_generator.py — Text-to-speech conversion.
 
-Primary: ElevenLabs (high quality).
-Fallback: gTTS / Google TTS (free, no quota) — used automatically when
-ElevenLabs returns a quota_exceeded or 401 error.
+Provider priority (controlled by TTS_PROVIDER env var):
+  1. elevenlabs — paid, highest quality
+  2. edge       — FREE Microsoft Edge Neural TTS, studio-quality (default)
+  3. gtts       — FREE Google TTS, robotic but always works
 """
 
+import asyncio
 import logging
 from pathlib import Path
 
-from elevenlabs.client import ElevenLabs
-from elevenlabs.core.api_error import ApiError
-
-from config import AUDIO_DIR, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, GTTS_SPEECH_RATE
+from config import (
+    AUDIO_DIR, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID,
+    GTTS_SPEECH_RATE, TTS_PROVIDER, EDGE_TTS_VOICE,
+)
 from voice_config import get_voice_settings
 
 logger = logging.getLogger(__name__)
 
 _ELEVENLABS_MODEL = "eleven_multilingual_v2"
 
-# Language hint for gTTS fallback — maps common channel languages
+# Language hint for gTTS fallback
 _GTTS_LANG = {
     "hindi": "hi",
     "urdu": "ur",
@@ -27,6 +29,33 @@ _GTTS_LANG = {
 }
 
 
+# ── Edge-TTS (free, high quality) ────────────────────────────────────────────
+
+def _edge_tts_segment(text: str, path: str, voice: str = EDGE_TTS_VOICE) -> None:
+    """Generate audio using Microsoft Edge Neural TTS (free, no API key)."""
+    import edge_tts
+
+    async def _generate():
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(path)
+
+    # edge-tts is async — run in a new event loop if needed
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # We're inside an existing event loop — run in a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            pool.submit(lambda: asyncio.run(_generate())).result()
+    else:
+        asyncio.run(_generate())
+
+
+# ── gTTS (free, basic quality) ───────────────────────────────────────────────
+
 def _gtts_segment(text: str, path: str, lang_hint: str = "hi") -> None:
     """Generate audio using free Google TTS as fallback, with optional speed adjustment."""
     import subprocess
@@ -34,31 +63,30 @@ def _gtts_segment(text: str, path: str, lang_hint: str = "hi") -> None:
     tts = gTTS(text=text, lang=lang_hint, slow=False)
 
     if abs(GTTS_SPEECH_RATE - 1.0) < 0.01:
-        # No speed change needed
         tts.save(path)
         return
 
-    # Save to a temp file, then apply atempo via ffmpeg
     tmp_path = path + ".raw.mp3"
     tts.save(tmp_path)
     try:
-        # atempo supports 0.5–2.0; values >2.0 need chaining
         rate = max(0.5, min(2.0, GTTS_SPEECH_RATE))
-        result = subprocess.run(
+        subprocess.run(
             ["ffmpeg", "-y", "-i", tmp_path, "-filter:a", f"atempo={rate}", "-vn", path],
             capture_output=True, check=True
         )
         logger.debug("gTTS speed adjusted ×%.2f → %s", rate, path)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        # ffmpeg not available or failed — use raw file
         import shutil
         shutil.move(tmp_path, path)
         logger.warning("ffmpeg unavailable for speed adjustment — using raw gTTS speed")
         return
     finally:
         import os as _os
-        _os.path.exists(tmp_path) and _os.remove(tmp_path)
+        if _os.path.exists(tmp_path):
+            _os.remove(tmp_path)
 
+
+# ── Main entry point ─────────────────────────────────────────────────────────
 
 def generate_audio_segments(
     segments: list[dict],
@@ -66,25 +94,17 @@ def generate_audio_segments(
 ) -> list[str]:
     """Convert the narration text of each segment to an MP3 file.
 
-    Tries ElevenLabs first. If quota is exceeded or ElevenLabs is
-    unavailable, falls back to gTTS automatically for all remaining
-    segments (and switches every segment once fallback is triggered).
-
-    Args:
-        segments: List of segment dicts, each containing a "narration" key.
-        out_dir:  Directory to write MP3 files into.
+    Uses the provider set in TTS_PROVIDER (.env):
+      - "elevenlabs" → ElevenLabs API (falls back to edge on quota error)
+      - "edge"       → Microsoft Edge Neural TTS (free, default)
+      - "gtts"       → Google TTS (free, basic)
 
     Returns:
         Ordered list of file paths matching the input segment order.
     """
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    try:
-        client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        voice_settings = get_voice_settings()
-        el_available = bool(ELEVENLABS_API_KEY)
-    except Exception:
-        el_available = False
+    provider = (TTS_PROVIDER or "edge").lower().strip()
 
     # Detect channel language for gTTS
     try:
@@ -93,7 +113,21 @@ def generate_audio_segments(
     except Exception:
         gtts_lang = "hi"
 
-    use_fallback = False  # once True, skip ElevenLabs for all remaining segments
+    # Prepare ElevenLabs client if needed
+    el_available = False
+    client = None
+    voice_settings = None
+    if provider == "elevenlabs" and ELEVENLABS_API_KEY:
+        try:
+            from elevenlabs.client import ElevenLabs
+            client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+            voice_settings = get_voice_settings()
+            el_available = True
+        except Exception:
+            logger.warning("ElevenLabs unavailable — falling back to edge-tts")
+            provider = "edge"
+
+    el_fallback = False  # once True, skip ElevenLabs for remaining segments
     paths: list[str] = []
 
     for i, segment in enumerate(segments):
@@ -104,9 +138,11 @@ def generate_audio_segments(
 
         path = f"{out_dir}/seg_{i:03d}.mp3"
 
-        if not use_fallback and el_available:
+        # ── ElevenLabs ────────────────────────────────────────────
+        if provider == "elevenlabs" and el_available and not el_fallback:
             try:
                 logger.info("Generating audio (ElevenLabs) for segment %d/%d", i + 1, len(segments))
+                from elevenlabs.core.api_error import ApiError
                 audio_stream = client.text_to_speech.convert(
                     voice_id=ELEVENLABS_VOICE_ID,
                     text=narration,
@@ -124,18 +160,33 @@ def generate_audio_segments(
                 status = detail.get("status", "") if isinstance(detail, dict) else ""
                 if e.status_code in (401, 429) or status == "quota_exceeded":
                     logger.warning(
-                        "ElevenLabs quota/auth error — switching to gTTS fallback "
+                        "ElevenLabs quota/auth error — switching to edge-tts "
                         "for remaining %d segments. Detail: %s",
                         len(segments) - i, detail
                     )
-                    use_fallback = True
+                    el_fallback = True
                 else:
                     raise
+            except Exception as e:
+                logger.warning("ElevenLabs error: %s — switching to edge-tts", e)
+                el_fallback = True
 
-        # gTTS fallback
+        # ── Edge-TTS (default / fallback from ElevenLabs) ────────
+        if provider in ("elevenlabs", "edge"):
+            try:
+                logger.info("Generating audio (Edge-TTS %s) for segment %d/%d",
+                            EDGE_TTS_VOICE, i + 1, len(segments))
+                _edge_tts_segment(narration, path, voice=EDGE_TTS_VOICE)
+                paths.append(path)
+                continue
+            except Exception as e:
+                logger.warning("Edge-TTS failed: %s — falling back to gTTS", e)
+
+        # ── gTTS (last resort) ───────────────────────────────────
         logger.info("Generating audio (gTTS fallback) for segment %d/%d", i + 1, len(segments))
         _gtts_segment(narration, path, lang_hint=gtts_lang)
         paths.append(path)
 
-    logger.info("Audio generation complete: %d files written to %s", len(paths), out_dir)
+    logger.info("Audio generation complete (%s): %d files written to %s",
+                provider, len(paths), out_dir)
     return paths

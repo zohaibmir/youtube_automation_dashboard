@@ -1326,13 +1326,66 @@ services:
   </div>
 </div>
 
+<!-- TTS PROVIDER -->
+<div class="s-card" id="s-tts-provider">
+  <div class="s-card-header">
+    <div class="s-logo" style="background:rgba(61,203,219,0.12);color:var(--teal)">&#127908;</div>
+    <div class="s-info">
+      <div class="s-name">Voice / TTS Provider <span class="s-badge" style="background:rgba(61,219,160,0.1);color:var(--green);border-color:rgba(61,219,160,0.3)">Free option</span></div>
+      <div class="s-desc">Choose the text-to-speech engine for narration</div>
+    </div>
+    <div class="s-status" id="st-tts"><span class="s-dot s-dot-on"></span><span id="st-tts-label">Edge TTS</span></div>
+  </div>
+  <div class="s-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label>TTS Provider</label>
+        <select id="cfg-tts-provider" onchange="onTtsProviderChange();markDirty()" style="margin-bottom:0">
+          <option value="edge">&#127775; Edge TTS (Free, studio quality)</option>
+          <option value="elevenlabs">&#128176; ElevenLabs (Paid, premium)</option>
+          <option value="gtts">&#9888;&#65039; Google TTS (Free, basic)</option>
+        </select>
+      </div>
+      <div id="edge-voice-section">
+        <label>Edge Voice</label>
+        <select id="cfg-edge-voice" onchange="markDirty()" style="margin-bottom:0">
+          <optgroup label="Hindi">
+            <option value="hi-IN-MadhurNeural">Madhur &#128104; Hindi male (warm)</option>
+            <option value="hi-IN-SwaraNeural">Swara &#128105; Hindi female</option>
+          </optgroup>
+          <optgroup label="Urdu">
+            <option value="ur-PK-AsadNeural">Asad &#128104; Urdu male (clear)</option>
+            <option value="ur-PK-UzmaNeural">Uzma &#128105; Urdu female</option>
+          </optgroup>
+          <optgroup label="English (Indian)">
+            <option value="en-IN-PrabhatNeural">Prabhat &#128104; Indian English male</option>
+            <option value="en-IN-NeerjaNeural">Neerja &#128105; Indian English female</option>
+          </optgroup>
+          <optgroup label="English (US/UK)">
+            <option value="en-US-GuyNeural">Guy &#128104; US English male</option>
+            <option value="en-US-JennyNeural">Jenny &#128105; US English female</option>
+            <option value="en-GB-RyanNeural">Ryan &#128104; British male</option>
+          </optgroup>
+          <optgroup label="Arabic">
+            <option value="ar-SA-HamedNeural">Hamed &#128104; Arabic male</option>
+            <option value="ar-SA-ZariyahNeural">Zariyah &#128105; Arabic female</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+    <div style="padding:10px 12px;background:rgba(61,219,160,0.06);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.6">
+      &#127775; <strong style="color:var(--green)">Edge TTS</strong> is Microsoft's neural voice engine — completely FREE, no API key, no limits. Studio-quality Hindi/Urdu voices perfect for YouTube narration. ElevenLabs is only needed if you want premium voice cloning.
+    </div>
+  </div>
+</div>
+
 <!-- ELEVENLABS -->
 <div class="s-card" id="s-elevenlabs">
   <div class="s-card-header">
     <div class="s-logo" style="background:rgba(61,203,219,0.12);color:var(--teal)">&#127908;</div>
     <div class="s-info">
-      <div class="s-name">ElevenLabs TTS <span class="s-badge s-required">Required</span></div>
-      <div class="s-desc">Converts scripts to natural-sounding voiceovers for every video</div>
+      <div class="s-name">ElevenLabs TTS <span class="s-badge" style="background:rgba(61,203,219,0.1);color:var(--teal);border-color:rgba(61,203,219,0.3)">Optional</span></div>
+      <div class="s-desc">Premium paid voices — only needed if TTS Provider is set to ElevenLabs</div>
     </div>
     <div class="s-status" id="st-elevenlabs"><span class="s-dot s-dot-off"></span>Not connected</div>
   </div>
@@ -1619,6 +1672,58 @@ services:
         <option value="7">Daily</option>
       </select>
     </div>
+  </div>
+</div>
+
+<!-- VIDEO PRODUCTION SETTINGS -->
+<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 10px">&#127916; Video Production</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+  <div class="grid2">
+    <div>
+      <label>Ken Burns zoom <span style="color:var(--muted);font-weight:400">(0 = off, 5 = subtle, 10 = strong)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="cfg-kenburns" min="0" max="15" step="1" value="5" oninput="document.getElementById('kb-val').textContent=this.value+'%';markDirty()" style="flex:1"/>
+        <span id="kb-val" style="font-size:12px;color:var(--accent);min-width:32px">5%</span>
+      </div>
+    </div>
+    <div>
+      <label>Crossfade duration <span style="color:var(--muted);font-weight:400">(seconds between segments)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="cfg-crossfade" min="0" max="1.0" step="0.1" value="0.4" oninput="document.getElementById('cf-val').textContent=this.value+'s';markDirty()" style="flex:1"/>
+        <span id="cf-val" style="font-size:12px;color:var(--accent);min-width:32px">0.4s</span>
+      </div>
+    </div>
+  </div>
+  <div class="grid2" style="margin-top:8px">
+    <div>
+      <label>Intro duration <span style="color:var(--muted);font-weight:400">(0 = no intro)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="cfg-intro" min="0" max="8" step="0.5" value="4" oninput="document.getElementById('intro-val').textContent=this.value+'s';markDirty()" style="flex:1"/>
+        <span id="intro-val" style="font-size:12px;color:var(--accent);min-width:32px">4s</span>
+      </div>
+    </div>
+    <div>
+      <label>Outro duration <span style="color:var(--muted);font-weight:400">(0 = no outro)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="cfg-outro" min="0" max="10" step="0.5" value="5" oninput="document.getElementById('outro-val').textContent=this.value+'s';markDirty()" style="flex:1"/>
+        <span id="outro-val" style="font-size:12px;color:var(--accent);min-width:32px">5s</span>
+      </div>
+    </div>
+  </div>
+  <hr class="div" style="margin:12px 0"/>
+  <label>Background music <span style="color:var(--muted);font-weight:400">(upload .mp3 — loops under narration)</span></label>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <input type="file" id="cfg-music-file" accept=".mp3,audio/mpeg" onchange="handleMusicUpload(this)" style="flex:1;font-size:12px"/>
+    <span id="cfg-music-name" style="font-size:11px;color:var(--muted)">No music selected</span>
+    <button class="btn btn-ghost btn-sm" onclick="clearMusic()" style="font-size:11px">&#10005; Clear</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <label style="margin:0;white-space:nowrap">Music volume</label>
+    <input type="range" id="cfg-music-vol" min="-20" max="0" step="1" value="-8" oninput="document.getElementById('mv-val').textContent=this.value+'dB';markDirty()" style="flex:1"/>
+    <span id="mv-val" style="font-size:12px;color:var(--accent);min-width:40px">-8dB</span>
+  </div>
+  <div style="margin-top:8px;padding:8px 10px;background:rgba(124,109,250,0.06);border-radius:6px;font-size:11px;color:var(--muted)">
+    &#127925; Use royalty-free music from <a href="https://www.youtube.com/audiolibrary" target="_blank" style="color:var(--accent)">YouTube Audio Library</a> or <a href="https://pixabay.com/music/" target="_blank" style="color:var(--accent)">Pixabay Music</a>. Music loops automatically to match video length.
   </div>
 </div>
 
@@ -2908,7 +3013,14 @@ function saveAllSettings(){
     desc: document.getElementById('cfg-desc').value,
     cpm: document.getElementById('cfg-cpm').value,
     freq: (function(){var sf=document.getElementById('s-cfg-freq');return sf?sf.value:document.getElementById('cfg-freq').value;})(),
-    budgetAnthropic: document.getElementById('budget-anthropic').value
+    budgetAnthropic: document.getElementById('budget-anthropic').value,
+    ttsProvider: document.getElementById('cfg-tts-provider').value,
+    edgeVoice: document.getElementById('cfg-edge-voice').value,
+    kenBurns: document.getElementById('cfg-kenburns').value,
+    crossfade: document.getElementById('cfg-crossfade').value,
+    introDur: document.getElementById('cfg-intro').value,
+    outroDur: document.getElementById('cfg-outro').value,
+    musicVol: document.getElementById('cfg-music-vol').value
   };
   _dbSave('config', s);
   _dirty = false;
@@ -2947,6 +3059,13 @@ async function loadAllSettings(){
     if(s.cpm) document.getElementById('cfg-cpm').value=s.cpm;
     if(s.freq){var sf=document.getElementById('s-cfg-freq');if(sf)sf.value=s.freq;}
     if(s.budgetAnthropic) document.getElementById('budget-anthropic').value=s.budgetAnthropic;
+    if(s.ttsProvider){document.getElementById('cfg-tts-provider').value=s.ttsProvider;onTtsProviderChange();}
+    if(s.edgeVoice){document.getElementById('cfg-edge-voice').value=s.edgeVoice;}
+    if(s.kenBurns){document.getElementById('cfg-kenburns').value=s.kenBurns;document.getElementById('kb-val').textContent=s.kenBurns+'%';}
+    if(s.crossfade){document.getElementById('cfg-crossfade').value=s.crossfade;document.getElementById('cf-val').textContent=s.crossfade+'s';}
+    if(s.introDur){document.getElementById('cfg-intro').value=s.introDur;document.getElementById('intro-val').textContent=s.introDur+'s';}
+    if(s.outroDur){document.getElementById('cfg-outro').value=s.outroDur;document.getElementById('outro-val').textContent=s.outroDur+'s';}
+    if(s.musicVol){document.getElementById('cfg-music-vol').value=s.musicVol;document.getElementById('mv-val').textContent=s.musicVol+'dB';}
     // Update status dots for keys that are set
     if(s.anthropic){setStatus('anthropic','on','Saved');}
     if(s.elevenlabs){setStatus('elevenlabs','on','Saved');}
@@ -2989,11 +3108,55 @@ function exportEnvFile(){
     '# Voice tuning (match sliders in Settings → ElevenLabs → Voice tuning)\n'+
     'VOICE_STABILITY='+(s.voiceStab||'0.48')+'\n'+
     'VOICE_SIMILARITY='+(s.voiceSim||'0.82')+'\n'+
-    'VOICE_STYLE='+(s.voiceStyle||'0.35')+'\n';
+    'VOICE_STYLE='+(s.voiceStyle||'0.35')+'\n\n'+
+    '# TTS Provider (edge | elevenlabs | gtts)\n'+
+    'TTS_PROVIDER='+((document.getElementById('cfg-tts-provider')||{}).value||'edge')+'\n'+
+    'EDGE_TTS_VOICE='+((document.getElementById('cfg-edge-voice')||{}).value||'hi-IN-MadhurNeural')+'\n';
   var a = document.createElement('a');
   a.href = 'data:text/plain;charset=utf-8,'+encodeURIComponent(content);
   a.download = '.env';
   a.click();
+}
+
+// ---- TTS Provider ----
+function onTtsProviderChange(){
+  var p=document.getElementById('cfg-tts-provider').value;
+  document.getElementById('edge-voice-section').style.display=(p==='edge')?'':'none';
+  document.getElementById('s-elevenlabs').style.display=(p==='elevenlabs')?'':'none';
+  var lbl=document.getElementById('st-tts-label');
+  if(p==='edge') lbl.textContent='Edge TTS';
+  else if(p==='elevenlabs') lbl.textContent='ElevenLabs';
+  else lbl.textContent='Google TTS';
+}
+
+// ---- Music upload ----
+async function handleMusicUpload(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  var label=document.getElementById('cfg-music-name');
+  label.textContent='Uploading '+file.name+'…';
+  try{
+    var form=new FormData();
+    form.append('file',file);
+    var r=await fetch('/api/upload-music',{method:'POST',body:form});
+    if(!r.ok)throw new Error('Upload failed: '+r.status);
+    var d=await r.json();
+    label.textContent='✓ '+file.name;
+    label.style.color='var(--green)';
+    markDirty();
+  }catch(e){
+    label.textContent='✗ '+e.message;
+    label.style.color='var(--red)';
+  }
+}
+function clearMusic(){
+  document.getElementById('cfg-music-file').value='';
+  var label=document.getElementById('cfg-music-name');
+  label.textContent='No music selected';
+  label.style.color='var(--muted)';
+  // Tell server to clear
+  fetch('/api/upload-music',{method:'DELETE'}).catch(function(){});
+  markDirty();
 }
 
 function clearAllKeys(){

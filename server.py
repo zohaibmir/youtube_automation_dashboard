@@ -48,6 +48,24 @@ except ImportError:
         return vals
 
 # ── Database helpers (optional — skipped if db/config not available) ──────────
+
+def _update_env_key(key: str, value: str) -> None:
+    """Update or add a single key in the .env file."""
+    env_path = Path(__file__).parent / ".env"
+    lines = []
+    found = False
+    if env_path.exists():
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            if raw.strip().startswith(key + "="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(raw)
+    if not found:
+        lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 _DB_AVAILABLE = False
 try:
     # Add project directory to path so we can import our modules
@@ -134,6 +152,9 @@ _EXPOSED_KEYS = {
     "YOUTUBE_CATEGORY_ID", "VOICE_STABILITY", "VOICE_SIMILARITY",
     "VOICE_STYLE", "YOUTUBE_CLIENT_SECRETS", "YOUTUBE_WEB_CLIENT_ID",
     "VISUAL_MODE", "GTTS_SPEECH_RATE",
+    "TTS_PROVIDER", "EDGE_TTS_VOICE",
+    "KEN_BURNS_ZOOM", "CROSSFADE_DURATION", "BG_MUSIC_VOLUME_DB",
+    "BG_MUSIC_PATH", "INTRO_DURATION", "OUTRO_DURATION",
 }
 
 _ENV_PATH = str(Path(__file__).parent / ".env")
@@ -240,6 +261,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": True})
         elif path == "/api/settings":
             self._handle_settings_post()
+        elif path == "/api/upload-music":
+            self._handle_music_upload()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self) -> None:
+        path = self.path.split("?")[0]
+        if path == "/api/upload-music":
+            self._handle_music_delete()
         else:
             self.send_response(404)
             self.end_headers()
@@ -343,6 +374,59 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": True})
         except Exception as ex:
             self._json_response({"ok": False, "error": str(ex)})
+
+    def _handle_music_upload(self) -> None:
+        """Accept a multipart/form-data .mp3 upload and save to music/bg_music.mp3."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._json_response({"ok": False, "error": "Expected multipart/form-data"})
+            return
+        # Extract boundary
+        boundary = None
+        for part in content_type.split(";"):
+            part = part.strip()
+            if part.startswith("boundary="):
+                boundary = part[len("boundary="):].strip('"')
+        if not boundary:
+            self._json_response({"ok": False, "error": "No boundary found"})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        # Find file data between boundary markers
+        sep = ("--" + boundary).encode()
+        parts = body.split(sep)
+        file_data = None
+        for part in parts:
+            if b"filename=" in part and b"Content-Type" in part:
+                # Split headers from body (double CRLF)
+                idx = part.find(b"\r\n\r\n")
+                if idx >= 0:
+                    file_data = part[idx + 4:]
+                    # Remove trailing \r\n
+                    if file_data.endswith(b"\r\n"):
+                        file_data = file_data[:-2]
+        if not file_data:
+            self._json_response({"ok": False, "error": "No file data found"})
+            return
+        music_dir = Path(__file__).parent / "music"
+        music_dir.mkdir(exist_ok=True)
+        dest = music_dir / "bg_music.mp3"
+        with open(dest, "wb") as f:
+            f.write(file_data)
+        _update_env_key("BG_MUSIC_PATH", str(dest))
+        self._json_response({"ok": True, "path": str(dest)})
+
+    def _handle_music_delete(self) -> None:
+        """Remove background music file and clear the .env key."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        dest = Path(__file__).parent / "music" / "bg_music.mp3"
+        if dest.exists():
+            dest.unlink()
+        _update_env_key("BG_MUSIC_PATH", "")
+        self._json_response({"ok": True})
 
     def _handle_env(self) -> dict:
         env = _read_env(_ENV_PATH)
