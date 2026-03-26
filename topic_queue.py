@@ -36,23 +36,30 @@ def enqueue_topics(topics: list[str], topic_type: str = "AI-generated") -> int:
 def dequeue_topic() -> str | None:
     """Pop and return the next pending topic.
 
-    Atomically marks it as 'processing' so it is not picked up twice.
+    Uses BEGIN EXCLUSIVE to prevent two concurrent callers from
+    selecting the same row.
     Returns None if the queue is empty.
     """
     conn = get_conn()
-    row = conn.execute(
-        "SELECT id, topic FROM topic_queue WHERE status='pending' ORDER BY id LIMIT 1"
-    ).fetchone()
-    if not row:
+    conn.execute("BEGIN EXCLUSIVE")
+    try:
+        row = conn.execute(
+            "SELECT id, topic FROM topic_queue WHERE status='pending' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return None
+        conn.execute(
+            "UPDATE topic_queue SET status='processing' WHERE id=?", (row["id"],)
+        )
+        conn.commit()
+        logger.info("Dequeued topic: %s", row["topic"])
+        return row["topic"]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        return None
-    conn.execute(
-        "UPDATE topic_queue SET status='processing' WHERE id=?", (row["id"],)
-    )
-    conn.commit()
-    conn.close()
-    logger.info("Dequeued topic: %s", row["topic"])
-    return row["topic"]
 
 
 def mark_topic_done(topic: str) -> None:

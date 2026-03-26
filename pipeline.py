@@ -5,10 +5,15 @@ the individual specialist modules in the correct order. Nothing else.
 All business logic lives in the modules it calls.
 """
 
+import glob
 import logging
+import os
 
 from audio_generator import generate_audio_segments
 from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, VISUAL_MODE
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_THUMB_OUT = os.path.join(_BASE_DIR, "thumbnail.jpg")
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start
 from thumbnail import make_thumbnail
@@ -17,6 +22,18 @@ from visual_fetcher import fetch_segment_images, fetch_segment_videos
 from youtube_uploader import upload_video
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_temp_files() -> None:
+    """Remove MoviePy TEMP_MPY_* scratch files left after video encoding."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    for pattern in ("*TEMP_MPY*", "images/*_thumb.jpg"):
+        for f in glob.glob(os.path.join(base, pattern)):
+            try:
+                os.remove(f)
+                logger.debug("Cleaned up temp file: %s", f)
+            except OSError:
+                pass
 
 
 def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | None:
@@ -37,7 +54,8 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 
 
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
-        thumb_data_url: str | None = None) -> str:
+        thumb_data_url: str | None = None, channel_slug: str | None = None,
+        guidance: str | None = None) -> str:
     """Execute the full pipeline for a given topic.
 
     Args:
@@ -48,6 +66,8 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                         If provided, overrides the generated SEO metadata.
         thumb_data_url: Base64 JPEG data URL from the dashboard Thumbnail tab.
                         If provided, skips thumbnail generation.
+        channel_slug:   YouTube channel slug for multi-account upload.
+        guidance:       Optional creator instructions for AI script generation.
 
     Returns:
         The YouTube video ID on success.
@@ -62,7 +82,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
             content = script_text_to_segments(script_text, topic, seo_override=seo)
             log_cost("anthropic", "script_convert", units=500, cost_usd=0.001, video_id=vid_id)
         else:
-            content = generate_script(topic)
+            content = generate_script(topic, guidance=guidance)
             log_cost("anthropic", "script", units=3000, cost_usd=0.07, video_id=vid_id)
             # Apply SEO overrides if provided from SEO tab
             if seo:
@@ -88,7 +108,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         thumbnail_path = None
         if thumb_data_url:
             thumbnail_path = _resolve_thumb_from_data_url(
-                thumb_data_url, f"{CHANNEL_NICHE.replace(' ', '_')}_thumb.jpg"
+                thumb_data_url, _THUMB_OUT
             )
         if not thumbnail_path:
             thumb_bg = next((f for f in visual_files if f.lower().endswith(".jpg")), None)
@@ -98,7 +118,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 thumb_bg = visual_files[0].replace(".mp4", "_thumb.jpg")
                 _vc.save_frame(thumb_bg, t=0)
                 _vc.close()
-            thumbnail_path = make_thumbnail(content, bg_path=thumb_bg)
+            thumbnail_path = make_thumbnail(content, bg_path=thumb_bg, out=_THUMB_OUT)
+        thumbnail_path = os.path.abspath(thumbnail_path)
+        logger.info("Thumbnail path: %s (exists=%s)", thumbnail_path, os.path.exists(thumbnail_path))
 
         # Step 5 — Video assembly
         music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
@@ -106,7 +128,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                                  title=content.get("title"), music_path=music)
 
         # Step 6 — Upload
-        youtube_id = upload_video(video_path, thumbnail_path, content)
+        youtube_id = upload_video(video_path, thumbnail_path, content, channel_slug=channel_slug)
 
         # Step 7 — Record success
         duration_s = sum(seg.get("duration_s", 45) for seg in segments)
@@ -121,10 +143,13 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         logger.error("Pipeline failed for '%s': %s", topic, exc)
         log_video_error(vid_id, str(exc))
         raise
+    finally:
+        _cleanup_temp_files()
 
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
-               seo: dict | None = None, thumb_data_url: str | None = None) -> tuple:
+               seo: dict | None = None, thumb_data_url: str | None = None,
+               guidance: str | None = None) -> tuple:
     """Run pipeline steps 1–5 (generate + build video) WITHOUT uploading.
 
     Args:
@@ -133,6 +158,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         script_text:    Pre-written script from the dashboard Script Writer tab.
         seo:            Dict with 'title', 'description', 'tags' from SEO tab.
         thumb_data_url: Base64 JPEG data URL from the dashboard Thumbnail tab.
+        guidance:       Optional creator instructions for AI script generation.
 
     Returns:
         (video_path, thumbnail_path, content_dict, vid_db_id)
@@ -152,7 +178,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
             log_cost("anthropic", "script_convert", units=500, cost_usd=0.001, video_id=vid_id)
         else:
             _p("Generating AI script…")
-            content = generate_script(topic)
+            content = generate_script(topic, guidance=guidance)
             log_cost("anthropic", "script", units=3000, cost_usd=0.07, video_id=vid_id)
             if seo:
                 if seo.get("title"):       content["title"]       = seo["title"]
@@ -177,7 +203,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         thumbnail_path = None
         if thumb_data_url:
             _p("Using custom thumbnail from Thumbnail tab…")
-            thumbnail_path = _resolve_thumb_from_data_url(thumb_data_url, "thumbnail.jpg")
+            thumbnail_path = _resolve_thumb_from_data_url(thumb_data_url, _THUMB_OUT)
         if not thumbnail_path:
             _p("Creating thumbnail…")
             thumb_bg = next((f for f in visual_files if f.lower().endswith(".jpg")), None)
@@ -187,7 +213,9 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 thumb_bg = visual_files[0].replace(".mp4", "_thumb.jpg")
                 _vc.save_frame(thumb_bg, t=0)
                 _vc.close()
-            thumbnail_path = make_thumbnail(content, bg_path=thumb_bg)
+            thumbnail_path = make_thumbnail(content, bg_path=thumb_bg, out=_THUMB_OUT)
+        thumbnail_path = os.path.abspath(thumbnail_path)
+        logger.info("Thumbnail path: %s (exists=%s)", thumbnail_path, os.path.exists(thumbnail_path))
 
         _p("Building video (this may take a few minutes)…")
         music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
@@ -201,3 +229,5 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         logger.error("Preview pipeline failed for '%s': %s", topic, exc)
         log_video_error(vid_id, str(exc))
         raise
+    finally:
+        _cleanup_temp_files()

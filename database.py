@@ -69,6 +69,11 @@ def init_db():
             value      TEXT NOT NULL,
             updated_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+        CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_topic_queue_status ON topic_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_api_costs_video ON api_costs(video_id);
     """)
     conn.commit()
     conn.close()

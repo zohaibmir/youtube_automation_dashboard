@@ -6,6 +6,7 @@ video scripts and topic ideas. Nothing else.
 
 import json
 import logging
+import re
 
 import anthropic
 
@@ -20,17 +21,53 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
-def generate_script(topic: str) -> dict:
+def _extract_json(raw: str) -> dict:
+    """Robustly extract a JSON object from Claude's response text.
+
+    Handles: bare JSON, ```json fenced blocks, and markdown-wrapped output.
+    """
+    # Try markdown code block first
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+    if m:
+        return json.loads(m.group(1))
+    # Fall back to outermost { … } with proper brace matching
+    start = raw.index("{")
+    depth = 0
+    for i, ch in enumerate(raw[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(raw[start : i + 1])
+    # Last resort: naive slice
+    return json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+
+
+def generate_script(topic: str, guidance: str | None = None) -> dict:
     """Generate a full video script for the given topic.
+
+    Args:
+        topic:    The video topic string.
+        guidance: Optional creator instructions to guide the AI's script style/content.
 
     Returns a dict with keys: title, description, tags,
     thumbnail_text, thumbnail_subtext, segments.
     """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+    guidance_block = ""
+    if guidance:
+        guidance_block = f"""
+
+--- CREATOR INSTRUCTIONS (follow these carefully) ---
+{guidance}
+---
+"""
+
     prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {CHANNEL_LANGUAGE}
 Topic: "{topic}"
-
+{guidance_block}
 Return ONLY valid JSON:
 {{
   "title": "under 65 chars",
@@ -42,14 +79,17 @@ Return ONLY valid JSON:
     {{
       "type": "hook",
       "narration": "30sec shocking opener",
-      "visual_keyword": "2-word search",
+      "visual_keyword": "3-5 word specific visual description for Pexels stock search",
+      "visual_keyword_fallback": "2-word simpler fallback search",
       "caption": "short caption"
     }}
   ]
 }}
 
 Min 10 segments. Hook = shocking fact or question.
-Use {CHANNEL_LANGUAGE} naturally. Short sentences. Build suspense."""
+Use {CHANNEL_LANGUAGE} naturally. Short sentences. Build suspense.
+For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins sunset', 'crowded mosque prayer', 'jerusalem old city wall'. Avoid single generic words.
+For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
     logger.info("Generating script for topic: %s", topic)
     msg = client.messages.create(
@@ -58,7 +98,7 @@ Use {CHANNEL_LANGUAGE} naturally. Short sentences. Build suspense."""
         messages=[{"role": "user", "content": prompt}],
     )
     raw = msg.content[0].text
-    script = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    script = _extract_json(raw)
     logger.info("Script generated: %d segments", len(script.get("segments", [])))
     return script
 
@@ -99,12 +139,15 @@ Return ONLY valid JSON — do not regenerate the script, keep the exact narratio
     {{
       "type": "hook|segment|outro",
       "narration": "exact verbatim text from script for this section",
-      "visual_keyword": "2-word pexels video search term",
+      "visual_keyword": "3-5 word specific visual description for Pexels",
+      "visual_keyword_fallback": "2-word simpler fallback term",
       "caption": "6-8 word on-screen caption"
     }}
   ]
 }}
-Split into 8-12 segments of roughly equal length."""
+Split into 8-12 segments of roughly equal length.
+For visual_keyword: be specific — e.g. 'mosque interior golden dome', 'soldier battlefield smoke', 'bible open light rays'. Avoid single generic words.
+For visual_keyword_fallback: 1-2 word broad fallback if specific term has no results."""
 
     logger.info("Converting dashboard script to segments for topic: %s", topic)
     msg = client.messages.create(
@@ -113,7 +156,7 @@ Split into 8-12 segments of roughly equal length."""
         messages=[{"role": "user", "content": prompt}],
     )
     raw = msg.content[0].text
-    result = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    result = _extract_json(raw)
 
     # Apply SEO overrides if provided
     if seo_override:

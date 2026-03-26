@@ -188,7 +188,7 @@ _pipeline_job: dict = {
 _pipeline_lock = threading.Lock()
 
 
-def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None) -> None:
+def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
     try:
         from pipeline import run_preview
@@ -205,6 +205,7 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
         video_path, thumb_path, content, vid_id = run_preview(
             topic, progress_cb=_progress,
             script_text=script_text, seo=seo, thumb_data_url=thumb_data_url,
+            guidance=guidance,
         )
         slug = video_path.replace("\\", "/").split("/")[-1]  # just the filename
         with _pipeline_lock:
@@ -238,6 +239,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
             self._json_response(safe)
+        elif path == "/api/channels":
+            self._handle_channels_get()
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -263,6 +266,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_settings_post()
         elif path == "/api/upload-music":
             self._handle_music_upload()
+        elif path == "/api/channels/add":
+            self._handle_channel_add()
+        elif path == "/api/channels/default":
+            self._handle_channel_set_default()
         else:
             self.send_response(404)
             self.end_headers()
@@ -271,6 +278,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/upload-music":
             self._handle_music_delete()
+        elif path.startswith("/api/channels/"):
+            self._handle_channel_remove(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -299,6 +308,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             seo_description= data.get("seoDescription", "").strip() or None
             seo_tags_raw   = data.get("seoTags", "").strip() or None
             thumb_data_url = data.get("thumbDataUrl", "").strip() or None
+            guidance       = data.get("guidance", "").strip() or None
             seo = None
             if seo_title or seo_description or seo_tags_raw:
                 seo = {
@@ -309,7 +319,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             t = threading.Thread(
                 target=_run_pipeline_bg,
                 args=(topic,),
-                kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url},
+                kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url,
+                        "guidance": guidance},
                 daemon=True,
             )
             t.start()
@@ -322,6 +333,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_response(403); self.end_headers(); return
         if not _DB_AVAILABLE:
             self._json_response({"ok": False, "error": "DB not available"}); return
+        # Read optional channel selection from request body
+        channel_slug = None
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = json.loads(self.rfile.read(length))
+                channel_slug = body.get("channel") or None
+        except Exception:
+            pass
         with _pipeline_lock:
             job_status = _pipeline_job["status"]
             video_path = _pipeline_job["_video_path"]
@@ -337,7 +357,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             from youtube_uploader import upload_video as _upload
             from database import log_video_complete
             from pipeline import run as _run  # noqa — just to ensure imports don't break
-            youtube_id = _upload(video_path, thumb_path, content)
+            youtube_id = _upload(video_path, thumb_path, content, channel_slug=channel_slug)
             segments = content.get("segments", [])
             duration_s = sum(seg.get("duration_s", 45) for seg in segments)
             log_video_complete(vid_db_id, content.get("title", ""), youtube_id, duration_s)
@@ -428,6 +448,57 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         _update_env_key("BG_MUSIC_PATH", "")
         self._json_response({"ok": True})
 
+    # ── Channel management ─────────────────────────────────────────────────
+
+    def _handle_channels_get(self) -> None:
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        from youtube_uploader import list_channels
+        self._json_response({"ok": True, "channels": list_channels()})
+
+    def _handle_channel_add(self) -> None:
+        """POST /api/channels/add — Run OAuth flow to add a YouTube channel."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            name = data.get("name", "").strip()
+            if not name:
+                self._json_response({"ok": False, "error": "name required"}); return
+            from youtube_uploader import add_channel
+            slug, channel_id = add_channel(name)
+            self._json_response({"ok": True, "slug": slug, "channel_id": channel_id})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_set_default(self) -> None:
+        """POST /api/channels/default — Set a channel as default."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            slug = data.get("slug", "").strip()
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"}); return
+            from youtube_uploader import set_default_channel
+            ok = set_default_channel(slug)
+            self._json_response({"ok": ok, "error": None if ok else "Channel not found"})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_remove(self, path: str) -> None:
+        """DELETE /api/channels/<slug> — Remove a channel."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        slug = path.replace("/api/channels/", "").strip("/")
+        if not slug:
+            self._json_response({"ok": False, "error": "slug required"}); return
+        from youtube_uploader import remove_channel
+        ok = remove_channel(slug)
+        self._json_response({"ok": ok, "error": None if ok else "Channel not found"})
+
     def _handle_env(self) -> dict:
         env = _read_env(_ENV_PATH)
         return {k: v for k, v in env.items() if k in _EXPOSED_KEYS}
@@ -466,7 +537,8 @@ def main() -> None:
     print(f"  /api/db/costs     →  monthly API costs")
     print(f"  /api/db/videos    →  video history")
     print(f"  /api/db/ypp       →  YPP progress")
-    print(f"  /api/db/queue     →  topic queue\n")
+    print(f"  /api/db/queue     →  topic queue")
+    print(f"  /api/channels     →  YouTube channel management\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

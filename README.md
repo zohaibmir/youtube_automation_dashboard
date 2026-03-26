@@ -163,3 +163,52 @@ Any step can be skipped — the pipeline falls back to AI generation for anythin
 | `thumbnail_designer.html` | Standalone thumbnail designer tool |
 | `SETTINGS.md` | Detailed API & OAuth setup guide |
 | `FEATURES.md` | Full feature changelog |
+
+---
+
+## Multi-Channel YouTube Upload
+
+The system supports multiple YouTube channels. Each channel has its own OAuth token stored in `tokens/`.
+
+### Dashboard
+
+Open the **YouTube** tab in the dashboard sidebar to manage channels, set a default, and configure upload settings.
+
+### CLI Commands
+
+```bash
+# Activate your virtualenv first
+source .venv/bin/activate
+
+# List all registered channels
+python3 -c "from youtube_uploader import list_channels; import json; print(json.dumps(list_channels(), indent=2))"
+
+# Add a new channel (opens browser for Google OAuth)
+python3 -c "from youtube_uploader import add_channel; add_channel('My Channel Name')"
+
+# Set default upload channel (use the slug shown in list_channels)
+python3 -c "from youtube_uploader import set_default_channel; set_default_channel('my-channel-name')"
+
+# Remove a channel
+python3 -c "from youtube_uploader import remove_channel; remove_channel('my-channel-name')"
+
+# Upload to a specific channel (overrides default)
+python3 main.py "Topic here" --channel my-channel-name
+```
+
+### How slugs work
+
+When you add a channel named `"My Main Channel"`, the slug is automatically generated as `my-main-channel`. Use this slug in `set_default_channel` and `remove_channel`.
+
+### Token storage
+
+OAuth tokens are stored in `tokens/` (gitignored):
+
+```
+tokens/
+├── channels.json       ← channel registry (name, slug, channel_id, is_default)
+├── default.json        ← token for the default channel
+└── my-channel.json     ← token for each additional channel
+```
+
+The legacy `token.json` in the project root is automatically migrated to `tokens/default.json` on first run.

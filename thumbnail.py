@@ -6,13 +6,32 @@ from PIL import Image, ImageDraw, ImageFont
 
 def get_font(size):
     candidates = [
+        # macOS
+        "/System/Library/Fonts/Supplemental/Impact.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        # Linux
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        # Windows
+        "C:/Windows/Fonts/impact.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
     ]
     for p in candidates:
         if os.path.exists(p):
             return ImageFont.truetype(p, size)
-    return ImageFont.load_default()
+    # Last resort: download a bundled font
+    import urllib.request
+    font_cache = os.path.join(os.path.dirname(__file__), "arial_bold.ttf")
+    if not os.path.exists(font_cache):
+        try:
+            url = "https://github.com/matomo-org/travis-scripts/raw/master/fonts/Arial.ttf"
+            urllib.request.urlretrieve(url, font_cache)
+        except Exception:
+            return ImageFont.load_default()
+    return ImageFont.truetype(font_cache, size)
 
 def make_faceless_thumbnail(content, bg_path, out="thumbnail.jpg"):
     W, H = 1280, 720
@@ -86,7 +105,7 @@ def make_hybrid_thumbnail(content, face_path, bg_path=None, out="thumbnail.jpg")
     canvas.save(out,"JPEG",quality=96,optimize=True)
     return out
 
-def make_thumbnail(content, bg_path, face_path=None, mode="faceless"):
+def make_thumbnail(content, bg_path, face_path=None, mode="faceless", out="thumbnail.jpg"):
     if mode=="hybrid" and face_path and os.path.exists(face_path):
-        return make_hybrid_thumbnail(content,face_path,bg_path)
-    return make_faceless_thumbnail(content,bg_path)
+        return make_hybrid_thumbnail(content,face_path,bg_path,out=out)
+    return make_faceless_thumbnail(content,bg_path,out=out)

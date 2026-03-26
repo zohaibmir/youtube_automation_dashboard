@@ -2,9 +2,12 @@
 
 Single responsibility: run the pipeline on a configured weekly schedule
 and keep the topic queue topped up. Nothing else.
+
+Supports multi-channel uploads via --channel flag or SCHEDULER_CHANNEL env var.
 """
 
 import logging
+import os
 import time
 
 import schedule
@@ -29,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _PUBLISH_TIME = "14:00"       # 14:00 UTC = 7:30 PM IST / 7 PM PKT
 _REFILL_THRESHOLD = 5
+_CHANNEL_SLUG: str | None = None  # set by CLI --channel or env var
 
 
 def refill_queue() -> None:
@@ -48,9 +52,9 @@ def publish_next() -> None:
     if not topic:
         logger.warning("Queue empty — skipping this scheduled run")
         return
-    logger.info("Starting pipeline: %s", topic)
+    logger.info("Starting pipeline: %s (channel=%s)", topic, _CHANNEL_SLUG or "default")
     try:
-        run(topic)
+        run(topic, channel_slug=_CHANNEL_SLUG)
         mark_topic_done(topic)
     except Exception as exc:
         logger.error("Pipeline failed: %s", exc)
@@ -73,9 +77,17 @@ def _setup_schedule() -> None:
 
 
 def main() -> None:
+    global _CHANNEL_SLUG
+    import argparse
+    parser = argparse.ArgumentParser(description="Automated YouTube publishing scheduler.")
+    parser.add_argument("--channel", type=str, default=None,
+                        help="YouTube channel slug from tokens/channels.json (e.g. 'default', 'main-channel')")
+    args = parser.parse_args()
+    _CHANNEL_SLUG = args.channel or os.environ.get("SCHEDULER_CHANNEL") or None
+
     from database import init_db
     init_db()
-    logger.info("Scheduler starting — %d videos/week", VIDEOS_PER_WEEK)
+    logger.info("Scheduler starting — %d videos/week, channel=%s", VIDEOS_PER_WEEK, _CHANNEL_SLUG or "default")
     _setup_schedule()
     refill_queue()
     while True:

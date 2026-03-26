@@ -136,6 +136,23 @@ canvas{display:block;width:100%;height:auto}
 .ps-step{font-size:11px;font-weight:600;padding:4px 9px;border-radius:5px;cursor:pointer;color:var(--muted);transition:all .15s;user-select:none;white-space:nowrap}
 .ps-step:hover{color:var(--text)}.ps-step.ps-done{color:var(--green)}.ps-step.ps-active{background:var(--accent);color:#fff;cursor:default}
 .ps-arrow{color:var(--dim);font-size:11px;margin:0 1px;user-select:none}
+/* Global progress bar (non-modal) */
+.gpb{margin-bottom:12px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;transition:all .25s}
+.gpb.gpb-running{border-color:var(--accent)}
+.gpb.gpb-done{border-color:var(--green)}
+.gpb.gpb-failed{border-color:var(--red)}
+.gpb-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.gpb-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+.gpb-status{font-size:10px;color:var(--muted)}
+.gpb-track{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-bottom:5px}
+.gpb-fill{height:100%;border-radius:2px;transition:width .5s ease;background:var(--accent)}
+.gpb-done .gpb-fill{background:var(--green)}
+.gpb-failed .gpb-fill{background:var(--red)}
+.gpb-steps{display:flex;gap:6px;flex-wrap:wrap}
+.gpb-step{font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;color:var(--dim);background:var(--bg3)}
+.gpb-step.done{color:var(--green)}.gpb-step.active{color:#fff;background:var(--accent)}
+@keyframes gpb-pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.gpb-running .gpb-fill{animation:gpb-pulse 1.5s ease-in-out infinite}
 /* Rich queue cards */
 .q-card{background:var(--bg2);border:1px solid var(--border);border-radius:9px;margin-bottom:8px;overflow:hidden;transition:border-color .15s}
 .q-card:hover{border-color:var(--border2)}.q-card.q-done{opacity:.65}
@@ -182,6 +199,7 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('queue',this)"><span class="nav-icon">&#128203;</span>Video Queue</button>
   <button class="nav-item" onclick="navTo('tracker',this)"><span class="nav-icon">&#128202;</span>Performance</button>
   <button class="nav-item" onclick="navTo('costs',this)"><span class="nav-icon">&#128176;</span>Cost &amp; Revenue</button>
+  <button class="nav-item" onclick="navTo('youtube',this)"><span class="nav-icon">&#9654;</span>YouTube</button>
   <div class="nav-divider"></div>
   <div class="nav-section">Setup</div>
   <button class="nav-item" onclick="navTo('pipeline',this)"><span class="nav-icon">&#9881;&#65039;</span>Pipeline Code</button>
@@ -189,14 +207,27 @@ canvas{display:block;width:100%;height:auto}
 </div>
 <div class="main">
 
-<!-- PIPELINE STEPPER -->
-<div id="pipeline-bar" style="display:none"></div>
+<!-- GLOBAL PIPELINE PROGRESS BAR (non-modal, persists across tabs) -->
+<div id="pipeline-bar" class="gpb" style="display:none">
+  <div class="gpb-header">
+    <div class="gpb-title"><span id="gpb-icon">&#127916;</span> <span id="gpb-label">Pipeline idle</span></div>
+    <div class="gpb-status" id="gpb-msg"></div>
+  </div>
+  <div class="gpb-track"><div class="gpb-fill" id="gpb-fill" style="width:0%"></div></div>
+  <div class="gpb-steps">
+    <span class="gpb-step" id="gpb-script">&#9997;&#65038; Script</span>
+    <span class="gpb-step" id="gpb-audio">&#127908; Audio</span>
+    <span class="gpb-step" id="gpb-images">&#128247; Visuals</span>
+    <span class="gpb-step" id="gpb-thumb">&#128444;&#65038; Thumb</span>
+    <span class="gpb-step" id="gpb-build">&#127917; Build</span>
+  </div>
+</div>
 
 <!-- API ALERT -->
 <div class="alert alert-red" id="api-alert">
   <span>&#9888;</span>
   <div><strong>Enter your Anthropic API key in Settings to use all AI features.</strong>
-  <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="navTo('settings',document.querySelectorAll('.nav-item')[8])">Go to Settings &#8594;</button></div>
+  <button class="btn btn-danger btn-sm" style="margin-left:8px" onclick="navTo('settings',document.querySelectorAll('.nav-item')[9])">Go to Settings &#8594;</button></div>
 </div>
 
 <!-- ===== TRENDING ===== -->
@@ -352,6 +383,10 @@ canvas{display:block;width:100%;height:auto}
         <input type="text" id="sc-ctx" placeholder="e.g. focus on ages 20-35 in Karachi"/>
       </div>
     </div>
+    <div style="margin-top:8px">
+      <label>AI guidance <span style="color:var(--muted);font-size:11px">(optional — tell the AI how to write the script)</span></label>
+      <textarea id="sc-guidance" rows="4" placeholder="e.g. Start with a shocking Hadith quote. Compare all 3 religions side by side. Keep tone dramatic but respectful. End with a cliffhanger about Dajjal." style="width:100%;resize:vertical"></textarea>
+    </div>
     <div class="btn-row">
       <button class="btn btn-primary" id="sc-btn" onclick="writeScript()"><span id="sc-icon">&#9997;&#65039;</span> Full Script</button>
       <button class="btn btn-ghost btn-sm" id="hook-btn" onclick="writeHook()"><span id="hook-icon">&#9889;</span> Hook only</button>
@@ -446,7 +481,7 @@ canvas{display:block;width:100%;height:auto}
     <div class="card" style="margin-top:0">
       <div class="card-header">
         <div class="card-title">&#128279; Apply SEO to existing YouTube video</div>
-        <span style="font-size:10px;color:var(--muted)">Requires YouTube connected in Settings</span>
+        <span style="font-size:10px;color:var(--muted)">Requires YouTube connected in YouTube tab</span>
       </div>
       <div class="info-box" style="margin-bottom:10px">&#128295; <strong>Python pipeline applies SEO automatically</strong> on every <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">main.py</code> run. Use this panel to update the title, description and tags of any <em>already-uploaded</em> video without re-running the pipeline.</div>
       <div class="grid2" style="margin-bottom:8px">
@@ -549,7 +584,7 @@ canvas{display:block;width:100%;height:auto}
           <button class="btn btn-primary btn-sm" id="push-thumb-btn" onclick="pushThumbnailToYouTube()" style="flex-shrink:0"><span id="push-thumb-icon">&#128228;</span> Push</button>
         </div>
         <div id="thumb-yt-result" style="font-size:11px;margin-top:5px;min-height:14px"></div>
-        <div style="font-size:10px;color:var(--dim);margin-top:3px">Requires YouTube connected in Settings. Python pipeline auto-sets thumbnails on upload &mdash; use this to update thumbnails on existing videos.</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:3px">Requires YouTube connected in YouTube tab. Python pipeline auto-sets thumbnails on upload &mdash; use this to update thumbnails on existing videos.</div>
       </div>
     </div>
   </div>
@@ -693,6 +728,164 @@ canvas{display:block;width:100%;height:auto}
       </tbody>
     </table>
   </div>
+</div>
+
+<!-- ===== YOUTUBE SETTINGS ===== -->
+<div id="panel-youtube" class="panel">
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  <div style="font-size:22px">&#9654;</div>
+  <div>
+    <div style="font-size:15px;font-weight:800;color:var(--text)">YouTube Settings</div>
+    <div style="font-size:11px;color:var(--muted)">Manage channels, upload settings, and OAuth connections</div>
+  </div>
+</div>
+
+<!-- CONNECTED CHANNELS -->
+<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Connected Channels</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+  <div class="info-box" style="margin-bottom:10px">Manage multiple YouTube channels. Add channels via OAuth, set a default, and choose which channel to upload to.</div>
+
+  <div id="yt-channels-list" style="margin-bottom:10px">
+    <div style="font-size:11px;color:var(--muted);padding:8px 0;text-align:center">Loading channels…</div>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+    <div style="flex:1;min-width:160px">
+      <label>Channel label</label>
+      <input type="text" id="add-channel-name" placeholder="e.g. Main Channel, Shorts Channel" style="margin-bottom:0"/>
+    </div>
+    <button class="btn btn-green btn-sm" onclick="addYouTubeChannel()" id="add-channel-btn" style="white-space:nowrap">+ Add Channel</button>
+  </div>
+  <div style="font-size:10px;color:var(--dim);margin-top:5px">Opens a browser popup for Google OAuth. Log in with the Google account that owns the YouTube channel.</div>
+
+  <div style="margin-top:12px;padding:9px 11px;background:rgba(124,109,250,0.06);border:1px solid rgba(124,109,250,0.15);border-radius:7px;font-size:11px;color:var(--muted);line-height:1.65">
+    <strong style="color:var(--accent)">CLI commands</strong> — you can also manage channels from the terminal:<br>
+    <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">python3 -c "from youtube_uploader import add_channel; add_channel('My Channel')"</code><br>
+    <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">python3 -c "from youtube_uploader import list_channels; print(list_channels())"</code><br>
+    <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">python3 -c "from youtube_uploader import set_default_channel; set_default_channel('slug')"</code><br>
+    <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">python3 -c "from youtube_uploader import remove_channel; remove_channel('slug')"</code>
+  </div>
+</div>
+
+<!-- UPLOAD SETTINGS -->
+<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 10px">Upload Settings</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+  <div class="grid2">
+    <div>
+      <label>Default upload visibility</label>
+      <select id="cfg-vis" oninput="markDirty()">
+        <option value="public">Public (immediate)</option>
+        <option value="unlisted">Unlisted first — safer</option>
+        <option value="private">Private — manual review</option>
+      </select>
+    </div>
+    <div>
+      <label>Video category</label>
+      <select id="yt-category" oninput="markDirty()">
+        <option value="22">People &amp; Blogs (22)</option>
+        <option value="27">Education (27)</option>
+        <option value="26">How-to &amp; Style (26)</option>
+        <option value="25">News &amp; Politics (25)</option>
+        <option value="28">Science &amp; Tech (28)</option>
+      </select>
+    </div>
+  </div>
+  <div class="s-budget-row" style="margin-top:8px">
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="color:var(--muted)">Daily API quota used</span>
+        <span id="yt-quota-label" style="color:var(--amber)">0 / 10,000 units</span>
+      </div>
+      <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
+        <div id="yt-bar" style="height:100%;width:0%;background:var(--amber);border-radius:3px"></div>
+      </div>
+    </div>
+    <span style="font-size:11px;color:var(--green);font-weight:700;flex-shrink:0">Free tier</span>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-top:4px">1 upload ≈ 1,600 units &bull; Free quota: 6 uploads/day &bull; Resets midnight Pacific Time</div>
+</div>
+
+<!-- OAUTH SETUP -->
+<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 10px">OAuth Setup</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+  <div style="background:rgba(247,194,78,0.07);border:1px solid rgba(247,194,78,0.2);border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--muted);line-height:1.7">
+    &#128273; YouTube uses <strong style="color:var(--amber)">OAuth 2.0</strong> — not a simple API key. You download a <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">client_secrets.json</code> file and authenticate once in the browser.
+  </div>
+  <div class="grid2" style="margin-bottom:10px">
+    <div>
+      <label>Google Cloud Project Name</label>
+      <input type="text" id="yt-project" placeholder="e.g. yt-automation-2025" oninput="markDirty()"/>
+    </div>
+    <div>
+      <label>client_secrets.json path</label>
+      <input type="text" id="yt-secrets-path" placeholder="./client_secrets.json" value="./client_secrets.json" oninput="markDirty()"/>
+    </div>
+  </div>
+
+  <hr class="div" style="margin:12px 0"/>
+  <div class="info-box" style="margin-bottom:10px"><strong>Dashboard YouTube connection</strong> — lets you push SEO metadata &amp; thumbnails to existing videos directly from this browser. Separate from the Python pipeline.<br/><strong style="color:var(--amber)">Requires a Web Application OAuth Client ID</strong></div>
+  <div class="grid2" style="margin-bottom:8px">
+    <div>
+      <label>YouTube OAuth Client ID <span style="font-weight:400;color:var(--dim)">(Web Application type)</span></label>
+      <input type="text" id="yt-client-id" placeholder="123456789-abc.apps.googleusercontent.com" autocomplete="off" oninput="markDirty()" style="margin-bottom:0"/>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:5px">
+      <button class="btn btn-green btn-sm" onclick="connectYouTube()">&#128279; Connect YouTube</button>
+      <div id="yt-connect-status" style="font-size:11px;color:var(--muted)">Not connected — enter Client ID and click Connect</div>
+    </div>
+  </div>
+
+  <div class="s-howto">
+    <button class="s-howto-btn" onclick="toggleHowto('youtube')">&#9660; Step-by-step setup guide</button>
+    <div class="s-howto-body" id="howto-body-youtube" style="display:none">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="background:rgba(61,219,160,0.07);border:1px solid rgba(61,219,160,0.2);border-radius:7px;padding:10px 12px;font-size:11px">
+          <div style="font-weight:700;color:var(--green);margin-bottom:4px">&#128640; Python pipeline upload</div>
+          <div style="color:var(--muted);line-height:1.6">Uses <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">client_secrets.json</code> + <strong>Desktop app</strong> OAuth. Set up once, uploads forever.</div>
+        </div>
+        <div style="background:rgba(247,194,78,0.07);border:1px solid rgba(247,194,78,0.2);border-radius:7px;padding:10px 12px;font-size:11px">
+          <div style="font-weight:700;color:var(--amber);margin-bottom:4px">&#128279; Dashboard live connect</div>
+          <div style="color:var(--muted);line-height:1.6">Uses <strong>Web Application</strong> OAuth Client ID. Push SEO/thumbnails directly from browser.</div>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">&#9312; Create Google Cloud Project</div>
+      <div class="s-step"><span class="s-step-num">1</span><span>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a> → sign in with the Google account that owns your YouTube channel</span></div>
+      <div class="s-step"><span class="s-step-num">2</span><span>Top bar → <strong>Select a project</strong> → <strong>New Project</strong> → name it <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">yt-automation</code> → <strong>Create</strong></span></div>
+      <div class="s-step"><span class="s-step-num">3</span><span>Left menu → <strong>APIs &amp; Services</strong> → <strong>Library</strong> → search <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">YouTube Data API v3</code> → click it → <strong>Enable</strong></span></div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9313; OAuth Consent Screen</div>
+      <div class="s-step"><span class="s-step-num">4</span><span><strong>APIs &amp; Services</strong> → <strong>OAuth consent screen</strong> → select <strong>External</strong> → <strong>Create</strong></span></div>
+      <div class="s-step"><span class="s-step-num">5</span><span>Fill in App name, User support email, Developer email → <strong>Save and Continue</strong> through all steps</span></div>
+      <div class="s-step"><span class="s-step-num">6</span><span><strong>Test users</strong> → <strong>+ Add Users</strong> → add your Gmail → Save. <span style="color:var(--amber)">Required while in Testing mode.</span></span></div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9314; Pipeline — Desktop App credentials</div>
+      <div class="s-step"><span class="s-step-num">7</span><span><strong>Credentials</strong> → <strong>+ Create Credentials</strong> → <strong>OAuth 2.0 Client ID</strong></span></div>
+      <div class="s-step"><span class="s-step-num">8</span><span>Type = <strong>Desktop app</strong> → name "Pipeline" → <strong>Create</strong></span></div>
+      <div class="s-step"><span class="s-step-num">9</span><span><strong>Download JSON</strong> → rename to <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">client_secrets.json</code> → place in project root</span></div>
+      <div class="s-step"><span class="s-step-num">10</span><span>Run <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">python main.py</code> → browser opens → Allow → token saved</span></div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9315; Dashboard — Web App credentials</div>
+      <div class="s-step"><span class="s-step-num">11</span><span><strong>Credentials</strong> → <strong>+ Create Credentials</strong> → <strong>OAuth 2.0 Client ID</strong> again</span></div>
+      <div class="s-step"><span class="s-step-num">12</span><span>Type = <strong>Web application</strong> → name "Dashboard"</span></div>
+      <div class="s-step"><span class="s-step-num">13</span><span><strong>Authorized JavaScript origins</strong> → add <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">http://localhost:8080</code> → <strong>Create</strong></span></div>
+      <div class="s-step"><span class="s-step-num">14</span><span>Copy the <strong>Client ID</strong> → paste into the field above → <strong>Save Settings</strong></span></div>
+      <div class="s-step"><span class="s-step-num">15</span><span>Click <strong>Connect YouTube</strong> → browser popup → Allow → status turns green</span></div>
+
+      <div style="margin-top:10px;padding:9px 11px;background:rgba(247,110,110,0.07);border:1px solid rgba(247,110,110,0.2);border-radius:7px;font-size:11px;color:var(--muted);line-height:1.65">
+        <strong style="color:var(--red)">&#9888; Common issues:</strong><br>
+        &bull; <strong>"Access blocked"</strong> — add your email as a Test User (step 6)<br>
+        &bull; <strong>"redirect_uri_mismatch"</strong> — add <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">http://localhost:8080</code> to Authorized JavaScript origins<br>
+        &bull; <strong>Token expires 7 days</strong> (Testing mode) — publish the app or re-authorize<br>
+        &bull; <strong>Daily quota</strong> = 10,000 units free (6 uploads/day)<br>
+        &bull; Need more? <a href="https://console.cloud.google.com/iam-admin/quotas" target="_blank" style="color:var(--accent)">Request quota increase</a> (free, 1-2 days)
+      </div>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <!-- ===== PIPELINE CODE ===== -->
@@ -1362,6 +1555,7 @@ services:
             <option value="en-IN-NeerjaNeural">Neerja &#128105; Indian English female</option>
           </optgroup>
           <optgroup label="English (US/UK)">
+            <option value="en-US-ChristopherNeural">Christopher &#128104; US English male (documentary)</option>
             <option value="en-US-GuyNeural">Guy &#128104; US English male</option>
             <option value="en-US-JennyNeural">Jenny &#128105; US English female</option>
             <option value="en-GB-RyanNeural">Ryan &#128104; British male</option>
@@ -1516,129 +1710,6 @@ services:
         <div class="s-step"><span class="s-step-num">3</span><span>Your API key is shown immediately on the API dashboard</span></div>
         <div class="s-step"><span class="s-step-num">4</span><span>No payment, no credit card needed</span></div>
         <div style="margin-top:8px;padding:8px 10px;background:rgba(61,219,160,0.06);border-radius:6px;font-size:11px;color:var(--muted)">&#128640; Completely free forever. 200 requests/hour is plenty for automated video production.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- YOUTUBE -->
-<div class="s-card" id="s-youtube">
-  <div class="s-card-header">
-    <div class="s-logo" style="background:rgba(247,110,110,0.12);color:var(--red)">&#9654;</div>
-    <div class="s-info">
-      <div class="s-name">YouTube Data API <span class="s-badge" style="background:rgba(247,194,78,0.1);color:var(--amber);border-color:rgba(247,194,78,0.3)">OAuth</span></div>
-      <div class="s-desc">Auto-uploads videos, sets thumbnails, titles, descriptions and tags</div>
-    </div>
-    <div class="s-status" id="st-youtube"><span class="s-dot s-dot-off"></span>Not configured</div>
-  </div>
-  <div class="s-body">
-    <div style="background:rgba(247,194,78,0.07);border:1px solid rgba(247,194,78,0.2);border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--muted);line-height:1.7">
-      &#128273; YouTube uses <strong style="color:var(--amber)">OAuth 2.0</strong> — not a simple API key. You download a <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">client_secrets.json</code> file and authenticate once in the browser. The token is then saved locally for future use.
-    </div>
-    <div class="grid2">
-      <div>
-        <label>Google Cloud Project Name</label>
-        <input type="text" id="yt-project" placeholder="e.g. yt-automation-2025" oninput="markDirty()"/>
-      </div>
-      <div>
-        <label>client_secrets.json path</label>
-        <input type="text" id="yt-secrets-path" placeholder="./client_secrets.json" value="./client_secrets.json" oninput="markDirty()"/>
-      </div>
-    </div>
-    <div class="grid2">
-      <div>
-        <label>Default upload visibility</label>
-        <select id="cfg-vis" oninput="markDirty()">
-          <option value="public">Public (immediate)</option>
-          <option value="unlisted">Unlisted first — safer</option>
-          <option value="private">Private — manual review</option>
-        </select>
-      </div>
-      <div>
-        <label>Video category</label>
-        <select id="yt-category" oninput="markDirty()">
-          <option value="22">People &amp; Blogs (22)</option>
-          <option value="27">Education (27)</option>
-          <option value="26">How-to &amp; Style (26)</option>
-          <option value="25">News &amp; Politics (25)</option>
-          <option value="28">Science &amp; Tech (28)</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="s-budget-row" style="margin-top:4px">
-      <div style="flex:1">
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
-          <span style="color:var(--muted)">Daily API quota used</span>
-          <span id="yt-quota-label" style="color:var(--amber)">0 / 10,000 units</span>
-        </div>
-        <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
-          <div id="yt-bar" style="height:100%;width:0%;background:var(--amber);border-radius:3px"></div>
-        </div>
-      </div>
-      <span style="font-size:11px;color:var(--green);font-weight:700;flex-shrink:0">Free tier</span>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px">1 upload = ~1,600 units &bull; Free quota: 6 uploads/day &bull; Resets midnight Pacific Time</div>
-
-    <hr class="div" style="margin:12px 0"/>
-    <div class="info-box" style="margin-bottom:10px"><strong>Dashboard YouTube connection</strong> — lets you push SEO metadata &amp; thumbnails to existing videos directly from this tool. Separate from the Python pipeline (which auto-uploads everything on <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">main.py</code> run).<br/><strong style="color:var(--amber)">Requires a Web Application OAuth Client ID</strong> — <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">Google Cloud Console</a> → Credentials → Create OAuth 2.0 Client ID → Web Application → add <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">http://localhost:8080</code> as Authorized JavaScript origin.</div>
-    <div class="grid2" style="margin-bottom:8px">
-      <div>
-        <label>YouTube OAuth Client ID <span style="font-weight:400;color:var(--dim)">(Web Application type)</span></label>
-        <input type="text" id="yt-client-id" placeholder="123456789-abc.apps.googleusercontent.com" autocomplete="off" oninput="markDirty()" style="margin-bottom:0"/>
-      </div>
-      <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:5px">
-        <button class="btn btn-green btn-sm" onclick="connectYouTube()">&#128279; Connect YouTube</button>
-        <div id="yt-connect-status" style="font-size:11px;color:var(--muted)">Not connected — enter Client ID and click Connect</div>
-      </div>
-    </div>
-
-    <div class="s-howto">
-      <button class="s-howto-btn" onclick="toggleHowto('youtube')">&#9660; Step-by-step setup guide</button>
-      <div class="s-howto-body" id="howto-body-youtube" style="display:block">
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div style="background:rgba(61,219,160,0.07);border:1px solid rgba(61,219,160,0.2);border-radius:7px;padding:10px 12px;font-size:11px">
-            <div style="font-weight:700;color:var(--green);margin-bottom:4px">&#128640; Python pipeline upload</div>
-            <div style="color:var(--muted);line-height:1.6">Uses <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">client_secrets.json</code> + <strong>Desktop app</strong> OAuth. Runs headlessly via <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">main.py</code>. Set up once, uploads forever.</div>
-          </div>
-          <div style="background:rgba(247,194,78,0.07);border:1px solid rgba(247,194,78,0.2);border-radius:7px;padding:10px 12px;font-size:11px">
-            <div style="font-weight:700;color:var(--amber);margin-bottom:4px">&#128279; Dashboard live connect</div>
-            <div style="color:var(--muted);line-height:1.6">Uses <strong>Web Application</strong> OAuth Client ID. Lets you push SEO/thumbnails to YouTube directly from this browser dashboard.</div>
-          </div>
-        </div>
-
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">&#9312; Create Google Cloud Project</div>
-        <div class="s-step"><span class="s-step-num">1</span><span>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">console.cloud.google.com</a> &rarr; sign in with the Google account that owns your YouTube channel</span></div>
-        <div class="s-step"><span class="s-step-num">2</span><span>Top bar &rarr; <strong>Select a project</strong> &rarr; <strong>New Project</strong> &rarr; name it <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">yt-automation</code> &rarr; <strong>Create</strong></span></div>
-        <div class="s-step"><span class="s-step-num">3</span><span>Left menu &rarr; <strong>APIs &amp; Services</strong> &rarr; <strong>Library</strong> &rarr; search <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">YouTube Data API v3</code> &rarr; click it &rarr; <strong>Enable</strong></span></div>
-
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9313; OAuth Consent Screen (one-time)</div>
-        <div class="s-step"><span class="s-step-num">4</span><span><strong>APIs &amp; Services</strong> &rarr; <strong>OAuth consent screen</strong> &rarr; select <strong>External</strong> &rarr; click <strong>Create</strong></span></div>
-        <div class="s-step"><span class="s-step-num">5</span><span>Fill in <em>App name</em> (e.g. "YT Automation"), <em>User support email</em> = your email, <em>Developer contact</em> = your email &rarr; <strong>Save and Continue</strong> through all 4 steps</span></div>
-        <div class="s-step"><span class="s-step-num">6</span><span><strong>Test users</strong> tab &rarr; <strong>+ Add Users</strong> &rarr; add your own Google email &rarr; Save. <span style="color:var(--amber)">Required while app is in Testing mode.</span></span></div>
-
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9314; Python pipeline — Desktop App credentials</div>
-        <div class="s-step"><span class="s-step-num">7</span><span><strong>APIs &amp; Services</strong> &rarr; <strong>Credentials</strong> &rarr; <strong>+ Create Credentials</strong> &rarr; <strong>OAuth 2.0 Client ID</strong></span></div>
-        <div class="s-step"><span class="s-step-num">8</span><span>Application type = <strong>Desktop app</strong> &rarr; name it "Pipeline" &rarr; <strong>Create</strong></span></div>
-        <div class="s-step"><span class="s-step-num">9</span><span>Click <strong>&#11015; Download JSON</strong> &rarr; rename file to <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">client_secrets.json</code> &rarr; place in <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">/var/www/youtube_automation/</code></span></div>
-        <div class="s-step"><span class="s-step-num">10</span><span>Run <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">python main.py</code> once &rarr; browser opens &rarr; log in &rarr; click <strong>Allow</strong> &rarr; token saved as <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">token.json</code>. Done — pipeline uploads automatically forever.</span></div>
-
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px">&#9315; Dashboard live connect — Web App credentials</div>
-        <div class="s-step"><span class="s-step-num">11</span><span><strong>Credentials</strong> &rarr; <strong>+ Create Credentials</strong> &rarr; <strong>OAuth 2.0 Client ID</strong> again</span></div>
-        <div class="s-step"><span class="s-step-num">12</span><span>Application type = <strong>Web application</strong> &rarr; name it "Dashboard"</span></div>
-        <div class="s-step"><span class="s-step-num">13</span><span>Under <strong>Authorized JavaScript origins</strong> click <strong>+ Add URI</strong> &rarr; add <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">http://localhost:8080</code> &rarr; <strong>Create</strong></span></div>
-        <div class="s-step"><span class="s-step-num">14</span><span>Copy the <strong>Client ID</strong> (ends in <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">.apps.googleusercontent.com</code>) &rarr; paste it into the <em>YouTube OAuth Client ID</em> field above &rarr; <strong>Save Settings</strong></span></div>
-        <div class="s-step"><span class="s-step-num">15</span><span>Click <strong>&#128279; Connect YouTube</strong> above &rarr; browser popup &rarr; log in &rarr; Allow &rarr; status turns green ✓</span></div>
-
-        <div style="margin-top:10px;padding:9px 11px;background:rgba(247,110,110,0.07);border:1px solid rgba(247,110,110,0.2);border-radius:7px;font-size:11px;color:var(--muted);line-height:1.65">
-          <strong style="color:var(--red)">&#9888; Common issues:</strong><br>
-          &bull; <strong>"Access blocked"</strong> — add your email as a Test User (step 6)<br>
-          &bull; <strong>"redirect_uri_mismatch"</strong> — make sure <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">http://localhost:8080</code> is in Authorized JavaScript origins (not redirect URIs)<br>
-          &bull; <strong>Token expires after 7 days</strong> (Testing mode) — either publish the app or re-authorize<br>
-          &bull; <strong>Daily quota</strong> = 10,000 units free. 1 upload ≈ 1,600 units = 6 uploads/day free<br>
-          &bull; Need more uploads? <a href="https://console.cloud.google.com/iam-admin/quotas" target="_blank" style="color:var(--accent)">Request quota increase</a> (free, takes 1-2 days)
-        </div>
       </div>
     </div>
   </div>
@@ -1923,7 +1994,7 @@ async function claude(prompt, tokens, useSearch, model){
   tokens=tokens||2500;
   model=model||_SONNET;
   var key=getKey();
-  if(!key){navTo('settings',document.querySelectorAll('.nav-item')[8]);alert('Enter your Anthropic API key in Settings first.');return '';}
+  if(!key){navTo('settings',document.querySelectorAll('.nav-item')[9]);alert('Enter your Anthropic API key in Settings first.');return '';}
   var body={model:model,max_tokens:tokens,messages:[{role:'user',content:prompt}]};
   var headers={'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
   if(useSearch){
@@ -1984,23 +2055,90 @@ function navTo(name,el){
   document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
   var p=document.getElementById('panel-'+name);if(p)p.classList.add('active');
   if(el)el.classList.add('active');
-  updatePipelineBar(name);
+  updatePipelineBar();
 }
 var _pipelineOrder=['trending','script','seo','thumbnail','queue'];
-function updatePipelineBar(name){
-  var bar=document.getElementById('pipeline-bar');if(!bar)return;
-  var idx=_pipelineOrder.indexOf(name);
-  if(idx===-1){bar.style.display='none';return;}
-  bar.style.display='flex';
-  var labels=['1\u00b7Trending','2\u00b7Script','3\u00b7SEO','4\u00b7Thumbnail','5\u00b7Queue'];
-  var html='';
-  _pipelineOrder.forEach(function(step,i){
-    if(i>0)html+='<span class="ps-arrow">\u203a</span>';
-    var cls='ps-step'+(i<idx?' ps-done':i===idx?' ps-active':'');
-    html+='<span class="'+cls+'" onclick="navTo(\''+step+'\',document.querySelectorAll(\'.nav-item\')['+i+'])">'+labels[i]+'</span>';
-  });
-  html+='<span class="ps-arrow">\u203a</span><span class="ps-step" style="opacity:.35" title="Upload from Video Queue">&#8599;&#65038;&nbsp;YouTube</span>';
-  bar.innerHTML=html;
+
+/* ── Global Pipeline Progress Bar (non-modal, persists across tabs) ── */
+var _gpbPollTimer=null;
+var _gpbStepIds=['gpb-script','gpb-audio','gpb-images','gpb-thumb','gpb-build'];
+var _gpbStepPct=[0,20,40,60,75,95];
+
+function updatePipelineBar(){
+  /* Show/hide is now driven by pipeline state, not tab navigation */
+}
+
+function _gpbDetectStep(msg){
+  var m=(msg||'').toLowerCase();
+  if(m.includes('script'))   return 0;
+  if(m.includes('audio'))    return 1;
+  if(m.includes('visual')||m.includes('image')||m.includes('fetching')) return 2;
+  if(m.includes('thumbnail')) return 3;
+  if(m.includes('building')||m.includes('video')||m.includes('assembly')) return 4;
+  if(m.includes('ready')||m.includes('\u2713'))  return 5;
+  return -1;
+}
+
+function _gpbUpdate(d){
+  var bar=document.getElementById('pipeline-bar');
+  if(!bar)return;
+  var status=d.status||'idle';
+  if(status==='idle'){bar.style.display='none';return;}
+  bar.style.display='block';
+  bar.className='gpb'+(status==='running'?' gpb-running':status==='ready'||status==='done'?' gpb-done':status==='failed'?' gpb-failed':'');
+
+  var icon=document.getElementById('gpb-icon');
+  var label=document.getElementById('gpb-label');
+  var msgEl=document.getElementById('gpb-msg');
+  var fill=document.getElementById('gpb-fill');
+
+  var msg=d.message||'';
+  msgEl.textContent=msg;
+
+  if(status==='running'){
+    icon.textContent='\u23f3';
+    label.textContent='Pipeline running\u2026';
+    var step=_gpbDetectStep(msg);
+    var pct=step>=0&&step<_gpbStepPct.length?_gpbStepPct[step]:10;
+    fill.style.width=pct+'%';
+    _gpbStepIds.forEach(function(id,i){
+      var el=document.getElementById(id);if(!el)return;
+      el.className='gpb-step'+(i<step?' done':i===step?' active':'');
+    });
+  } else if(status==='ready'){
+    icon.textContent='\u2705';
+    label.textContent='Video ready!';
+    fill.style.width='100%';
+    _gpbStepIds.forEach(function(id){var el=document.getElementById(id);if(el)el.className='gpb-step done';});
+  } else if(status==='done'){
+    icon.textContent='\u2705';
+    label.textContent='Uploaded to YouTube';
+    fill.style.width='100%';
+    _gpbStepIds.forEach(function(id){var el=document.getElementById(id);if(el)el.className='gpb-step done';});
+    setTimeout(function(){bar.style.display='none';},8000);
+  } else if(status==='failed'){
+    icon.textContent='\u274c';
+    label.textContent='Pipeline failed';
+    fill.style.width='100%';
+  }
+}
+
+function _gpbPoll(){
+  fetch('/api/pipeline/status')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      _gpbUpdate(d);
+      if(d.status==='idle'||d.status==='ready'||d.status==='done'||d.status==='failed'){
+        if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
+      }
+    }).catch(function(){});
+}
+
+function gpbStart(){
+  /* Called when pipeline kicks off to start global progress bar polling */
+  _gpbUpdate({status:'running',message:'Starting pipeline\u2026'});
+  if(_gpbPollTimer)clearInterval(_gpbPollTimer);
+  _gpbPollTimer=setInterval(_gpbPoll,2500);
 }
 function copyById(id,btn){
   var el=document.getElementById(id);if(!el)return;
@@ -2204,12 +2342,14 @@ async function writeScript(){
   if(!topic){alert('Enter a video topic first.');return;}
   setBtn('sc-btn','sc-icon','&#9997;&#65039;',true);
   var ctx=document.getElementById('sc-ctx').value;
+  var guidance=(document.getElementById('sc-guidance').value||'').trim();
   var transcript=(document.getElementById('sw-transcript')||{value:''}).value.trim();
   var prompt;
   if(scriptMode==='hybrid'){
     prompt='Write a hybrid YouTube script.\nTopic: "'+topic+'"\nAudience: '+getAud()+'\nLanguage: '+getLang()+
       '\nDuration: '+document.getElementById('sc-dur').value+'\n'+
       (transcript?'Kamil already recorded this: "'+transcript.slice(0,300)+'"\n':'')+
+      (guidance?'\n--- CREATOR INSTRUCTIONS (follow these carefully) ---\n'+guidance+'\n---\n':'')+
       '\nFormat EXACTLY:\n[KAMIL INTRO -- 0:00]\n(60-90 sec shocking hook, Kamil speaks to camera in Hinglish)\nHis exact words...\n\n'+
       '[AI NARRATOR -- 1:30]\n(Factual expansion over stock footage)\nNarration...\n\n'+
       '[KAMIL REACTION -- 4:00]\n(30-45 sec Kamil reacts to key stat)\nHis words...\n\n'+
@@ -2223,6 +2363,7 @@ async function writeScript(){
       '\nStyle: '+document.getElementById('sc-style').value+
       '\nHook: '+document.getElementById('sc-hook').value+
       (ctx?'\nContext: '+ctx:'')+
+      (guidance?'\n\n--- CREATOR INSTRUCTIONS (follow these carefully) ---\n'+guidance+'\n---':'') +
       '\n\nFormat:\n[HOOK - 0:00]\n(30 sec)\ntext...\n\n[SEGMENT 1 - title]\ntext...\n\n[OUTRO]\ntext...\n\n'+
       'Rules: Short punchy sentences. Use '+getLang()+' naturally (yaar, suno, dekho). Tease the big reveal. 2-3 real stats. Each segment ends with curiosity hook.';
   }
@@ -2295,8 +2436,10 @@ function addScriptToQueue(){
   var t=document.getElementById('sc-topic').value.trim();
   if(!t){alert('Enter a topic first.');return;}
   var scriptText=(document.getElementById('sc-text').textContent||'').trim();
+  var guidance=(document.getElementById('sc-guidance').value||'').trim();
   var hasSEO=(document.getElementById('seo-out').style.display!=='none');
   var meta={hasScript:!!scriptText, scriptText:scriptText};
+  if(guidance)meta.guidance=guidance;
   if(hasSEO){
     var titles=(document.getElementById('seo-titles').textContent||'').split('\n');
     meta.hasSEO=true;
@@ -2620,6 +2763,12 @@ function loadSettings(){ loadAllSettings(); }
     drawThumb();
     autoTestConnections(); // fire-and-forget: test every key that is set
     loadFromDB();          // pull pipeline stats into tracker + costs panels
+    loadYouTubeChannels(); // populate channel list + upload dropdown
+    // Resume global progress bar if pipeline is already running
+    fetch('/api/pipeline/status').then(function(r){return r.json();}).then(function(d){
+      if(d.status==='running'){gpbStart();}
+      else if(d.status==='ready'||d.status==='done'){_gpbUpdate(d);}
+    }).catch(function(){});
   },0);
 })();
 
@@ -3376,6 +3525,102 @@ function clearThumbBg(){
   drawThumb();
 }
 
+// ===== YOUTUBE CHANNELS (MULTI-CHANNEL) =====
+var _ytChannels = [];
+
+function loadYouTubeChannels() {
+  fetch('/api/channels').then(function(r){return r.json();}).then(function(d){
+    if(!d.ok) return;
+    _ytChannels = d.channels || [];
+    renderChannelList();
+    populateChannelDropdown();
+  }).catch(function(){});
+}
+
+function renderChannelList() {
+  var el = document.getElementById('yt-channels-list');
+  if (!el) return;
+  if (_ytChannels.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0;text-align:center">No channels connected yet. Add your first channel below.</div>';
+    return;
+  }
+  var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+  _ytChannels.forEach(function(ch) {
+    var isDefault = ch.is_default;
+    var statusColor = ch.has_token ? 'var(--green)' : 'var(--red)';
+    var statusText = ch.has_token ? '✓ Connected' : '✗ Token missing';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:7px;border:1px solid ' + (isDefault ? 'rgba(61,219,160,0.3)' : 'var(--border)') + '">';
+    html += '<div style="flex:1">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--text)">' + (ch.name || ch.slug) + '</div>';
+    html += '<div style="font-size:10px;color:var(--muted)">' + (ch.channel_id || 'No ID') + ' &nbsp;·&nbsp; <span style="color:' + statusColor + '">' + statusText + '</span></div>';
+    html += '</div>';
+    if (isDefault) {
+      html += '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(61,219,160,0.1);padding:2px 8px;border-radius:4px">DEFAULT</span>';
+    } else {
+      html += '<button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="setDefaultChannel(\'' + ch.slug + '\')">Set Default</button>';
+    }
+    html += '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--red)" onclick="removeChannel(\'' + ch.slug + '\',\'' + (ch.name||ch.slug).replace(/'/g,"\\'") + '\')">✗</button>';
+    html += '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function populateChannelDropdown() {
+  var sel = document.getElementById('pl-channel-select');
+  if (!sel) return;
+  sel.innerHTML = '';
+  if (_ytChannels.length === 0) {
+    sel.innerHTML = '<option value="">No channels — add in Settings</option>';
+    return;
+  }
+  _ytChannels.forEach(function(ch) {
+    var opt = document.createElement('option');
+    opt.value = ch.slug;
+    opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+    if (ch.is_default) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function addYouTubeChannel() {
+  var nameInput = document.getElementById('add-channel-name');
+  var name = nameInput.value.trim();
+  if (!name) { alert('Enter a label for the channel first.'); return; }
+  var btn = document.getElementById('add-channel-btn');
+  btn.disabled = true; btn.textContent = 'Authenticating…';
+  fetch('/api/channels/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      btn.disabled = false; btn.textContent = '+ Add Channel';
+      if (d.ok) {
+        nameInput.value = '';
+        loadYouTubeChannels();
+      } else {
+        alert('Error: ' + (d.error || 'Unknown'));
+      }
+    })
+    .catch(function(e){
+      btn.disabled = false; btn.textContent = '+ Add Channel';
+      alert('Network error: ' + e.message);
+    });
+}
+
+function setDefaultChannel(slug) {
+  fetch('/api/channels/default', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({slug:slug})})
+    .then(function(r){return r.json();})
+    .then(function(d){ if(d.ok) loadYouTubeChannels(); else alert(d.error||'Failed'); })
+    .catch(function(e){ alert('Error: '+e.message); });
+}
+
+function removeChannel(slug, name) {
+  if (!confirm('Remove channel "' + name + '"? This deletes its OAuth token.')) return;
+  fetch('/api/channels/' + encodeURIComponent(slug), {method:'DELETE'})
+    .then(function(r){return r.json();})
+    .then(function(d){ if(d.ok) loadYouTubeChannels(); else alert(d.error||'Failed'); })
+    .catch(function(e){ alert('Error: '+e.message); });
+}
+
 // ===== YOUTUBE BROWSER API =====
 var ytToken=null,ytTokenClient=null;
 
@@ -3550,6 +3795,7 @@ function runPipelineForTopic(itemOrTopic){
   modal.style.display='flex';
   var payload={topic:topic};
   if(item.scriptText)payload.scriptText=item.scriptText;
+  if(item.guidance)payload.guidance=item.guidance;
   if(item.hasSEO){
     payload.seoTitle=item.seoTitle||'';
     payload.seoDescription=item.seoDescription||'';
@@ -3561,6 +3807,7 @@ function runPipelineForTopic(itemOrTopic){
     .then(function(d){
       if(!d.ok){_plShowError(d.error||'Failed to start');return;}
       _plPollTimer=setInterval(_plPoll,2500);
+      gpbStart(); // start global progress bar
     })
     .catch(function(e){_plShowError('Network error: '+e.message);});
 }
@@ -3573,16 +3820,20 @@ function _plPoll(){
       var msg=d.message||'';
       document.getElementById('pl-status-msg').textContent=msg;
       _plSetStep(msg);
+      _gpbUpdate(d); // sync global progress bar
       if(d.status==='ready'){
         clearInterval(_plPollTimer);_plPollTimer=null;
+        if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
         document.getElementById('pl-close-btn').disabled=false;
         _plShowPreview(d);
       } else if(d.status==='done'){
         clearInterval(_plPollTimer);_plPollTimer=null;
+        if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
         document.getElementById('pl-close-btn').disabled=false;
         _plShowDone(d.youtube_url);
       } else if(d.status==='failed'){
         clearInterval(_plPollTimer);_plPollTimer=null;
+        if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
         document.getElementById('pl-close-btn').disabled=false;
         _plShowError(d.error||'Pipeline failed');
       }
@@ -3623,8 +3874,11 @@ function _plShowError(msg){
 
 function approvePipelineUpload(){
   var btn=document.getElementById('pl-upload-btn');
+  var channelSel=document.getElementById('pl-channel-select');
+  var selectedChannel=channelSel?channelSel.value:'';
+  if(_ytChannels.length>0 && !selectedChannel){alert('Select a channel to upload to.');return;}
   btn.disabled=true;btn.textContent='Uploading…';
-  fetch('/api/pipeline/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+  fetch('/api/pipeline/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:selectedChannel||null})})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){
@@ -3691,7 +3945,11 @@ function cancelPipeline(){
           </div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:140px">
+          <label style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:3px;display:block">UPLOAD TO CHANNEL</label>
+          <select id="pl-channel-select" style="font-size:12px;padding:6px 10px;margin-bottom:0"></select>
+        </div>
         <button class="btn btn-green" style="flex:1;min-width:160px" onclick="approvePipelineUpload()" id="pl-upload-btn">&#128228; Upload to YouTube</button>
         <button class="btn btn-danger btn-sm" style="flex:0" onclick="cancelPipeline()">&#128465; Discard</button>
       </div>
