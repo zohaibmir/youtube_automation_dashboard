@@ -1,154 +1,234 @@
-# Terminal Commands Reference
+# YouTube Automation — Terminal Commands
 
-Quick reference for all CLI operations in the YouTube automation pipeline.
+A simple guide to run everything from the terminal. Copy-paste these commands.
+
+> **Before anything:** always open Terminal, go to the project folder, and activate the environment:
+> ```bash
+> cd /private/var/www/youtube_automation
+> source .venv/bin/activate
+> ```
 
 ---
 
-## Server
+## 1. Start the Dashboard
+
+This starts the web dashboard so you can open it in your browser at `http://localhost:8080`
 
 ```bash
-# Start dashboard server (port 8080)
-source .venv/bin/activate && python3 server.py
+python3 server.py
+```
 
-# Start in background
+To run it in the **background** (so you can keep using the terminal):
+
+```bash
 python3 server.py &
+```
 
-# Kill & restart
-pkill -f "server.py" 2>/dev/null; sleep 0.5 && source .venv/bin/activate && python3 server.py &
+To **restart** it (stop old one, start fresh):
 
-# Test server is running
+```bash
+pkill -f "server.py"; sleep 1 && python3 server.py &
+```
+
+To **check if it's running**:
+
+```bash
 curl -s http://localhost:8080/api/env | python3 -m json.tool
 ```
 
-## Full Pipeline (CLI)
+---
+
+## 2. Create a Video (Full Pipeline)
+
+### Option A: Quick — one topic, default YouTube channel
 
 ```bash
-# Run pipeline with default channel
-source .venv/bin/activate && python3 _run_pipeline.py
-
-# Run pipeline → upload to specific channel
-python3 _run_pipeline.py --channel main-channel
-
-# Run via main.py (simpler, uses sys.argv topic)
-python3 main.py "Your Video Topic Here"
+python3 main.py "Who Built the Pyramids? The Real Story"
 ```
 
-## Scheduler
+### Option B: Choose which YouTube channel to upload to
 
 ```bash
-# Start scheduler (default channel)
+python3 _run_pipeline.py --channel main-channel
+```
+
+> **Note:** Edit the `TOPIC` inside `_run_pipeline.py` to change the video topic.
+
+### Option C: From the Dashboard (easiest)
+
+1. Open `http://localhost:8080` in your browser
+2. Go to **Script** tab → type topic → click **Full Script**
+3. Optionally write guidance in the **AI guidance** box
+4. Click **+ Queue** → go to **Queue** tab → click **Run**
+
+---
+
+## 3. Auto-Scheduler (Publish Videos on a Schedule)
+
+Runs automatically based on your `VIDEOS_PER_WEEK` setting.
+
+```bash
+# Use default YouTube channel
 python3 scheduler.py
 
-# Start scheduler → specific channel
+# Use a specific channel
 python3 scheduler.py --channel main-channel
-
-# Or via env var
-SCHEDULER_CHANNEL=main-channel python3 scheduler.py
 ```
 
-## YouTube Channels
+---
+
+## 4. YouTube Channels
+
+### See all your connected channels
 
 ```bash
-# List all channels
 python3 -c "
 from youtube_uploader import list_channels
 for ch in list_channels():
-    d = '⭐' if ch['is_default'] else '  '
-    print(f'{d} {ch[\"slug\"]:20s}  {ch[\"name\"]}')
+    star = '⭐' if ch['is_default'] else '  '
+    print(f'{star} {ch[\"slug\"]:20s}  {ch[\"name\"]}')
 "
-
-# Set default channel
-python3 -c "from youtube_uploader import set_default_channel; set_default_channel('default')"
-
-# Check token path for a channel
-python3 -c "from youtube_uploader import _get_token_path; print(_get_token_path('main-channel'))"
 ```
 
-## Smoke Test & Imports
+Example output:
+```
+⭐ default               Truth that never shared
+   main-channel          zohaib mir
+```
+
+### Change the default channel
 
 ```bash
-# Full smoke test (all modules + DB)
-python3 smoke_test.py
+# Set "main-channel" as default
+python3 -c "from youtube_uploader import set_default_channel; set_default_channel('main-channel')"
 
-# Quick import check
-python3 -c "
-from pipeline import run, run_preview
-from content_generator import generate_script, script_text_to_segments
-from video_builder import build_video
-print('✓ All imports OK')
-"
+# Set "default" back
+python3 -c "from youtube_uploader import set_default_channel; set_default_channel('default')"
 ```
 
-## Preview Pipeline (no upload)
+---
+
+## 5. Preview a Video (Without Uploading)
+
+Builds the video locally so you can watch it first, no upload.
 
 ```bash
 python3 -c "
 from pipeline import run_preview
 import logging
 logging.basicConfig(level=logging.INFO)
-
-video_path, thumb_path, content, vid_id = run_preview(
-    'Your Topic Here',
-    progress_cb=lambda msg: print(f'>> {msg}')
-)
-print(f'✅ Video: {video_path}')
-print(f'✅ Thumb: {thumb_path}')
-print(f'✅ Title: {content.get(\"title\")}')
+video, thumb, content, vid_id = run_preview('Your Topic Here', progress_cb=lambda m: print('>>',m))
+print('Video:', video)
+print('Title:', content.get('title'))
 "
 ```
 
-## Environment & Config
+The video file will be saved in the `output/` folder.
+
+---
+
+## 6. Check Everything Works (Smoke Test)
+
+Run this to make sure all modules are installed correctly:
 
 ```bash
-# Check key config values
+python3 smoke_test.py
+```
+
+You should see all checkmarks (✓). If any show ✗, something is broken.
+
+---
+
+## 7. Check Your Settings
+
+### See video settings (zoom, music, crossfade)
+
+```bash
 python3 -c "
 from config import KEN_BURNS_ZOOM, CROSSFADE_DURATION, BG_MUSIC_VOLUME_DB, BG_MUSIC_PATH
-print(f'KEN_BURNS_ZOOM={KEN_BURNS_ZOOM}')
-print(f'CROSSFADE={CROSSFADE_DURATION}')
-print(f'BG_MUSIC_VOL={BG_MUSIC_VOLUME_DB}')
-print(f'BG_MUSIC_PATH={repr(BG_MUSIC_PATH)}')
+print('Zoom effect:', KEN_BURNS_ZOOM)
+print('Crossfade:', CROSSFADE_DURATION, 'sec')
+print('Music volume:', BG_MUSIC_VOLUME_DB, 'dB')
+print('Music file:', BG_MUSIC_PATH or 'None')
 "
-
-# Verify .env is loaded
-python3 -c "from config import ANTHROPIC_API_KEY, PEXELS_API_KEY; print('Keys loaded' if ANTHROPIC_API_KEY else 'MISSING')"
 ```
 
-## Setup
+### Check if API keys are loaded
 
 ```bash
-# Create venv & install deps
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Install ffmpeg (macOS)
-brew install ffmpeg
-
-# Docker
-docker-compose up --build
+python3 -c "
+from config import ANTHROPIC_API_KEY, PEXELS_API_KEY
+print('Claude AI:', 'OK' if ANTHROPIC_API_KEY else 'MISSING!')
+print('Pexels:', 'OK' if PEXELS_API_KEY else 'MISSING!')
+"
 ```
 
-## Database
+---
+
+## 8. Database & Queue
+
+### How many videos have been made?
 
 ```bash
-# Check stats
 python3 -c "
 from database import init_db, get_channel_stats
 init_db()
 print(get_channel_stats())
 "
+```
 
-# Topic queue count
+### How many topics are waiting in the queue?
+
+```bash
 python3 -c "
 from database import init_db; init_db()
 from topic_queue import pending_count
-print(f'Pending topics: {pending_count()}')
+print('Topics waiting:', pending_count())
 "
 ```
 
-## Git
+---
+
+## 9. First-Time Setup
+
+Only do this once when setting up on a new machine:
 
 ```bash
-git add -A && git commit -m "feat: description"
+# Step 1: Create virtual environment
+python3 -m venv .venv
+
+# Step 2: Activate it
+source .venv/bin/activate
+
+# Step 3: Install all packages
+pip install -r requirements.txt
+
+# Step 4: Install ffmpeg (needed for video)
+brew install ffmpeg
+```
+
+Then copy `.env.example` to `.env` and fill in your API keys.
+
+---
+
+## 10. Save Your Work (Git)
+
+### Save all changes
+
+```bash
+git add -A
+git commit -m "describe what you changed"
+```
+
+### Push to GitHub
+
+```bash
 git push origin main
+```
+
+### See what changed
+
+```bash
+git status
+git log --oneline -5
 ```
