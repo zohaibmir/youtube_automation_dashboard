@@ -6,6 +6,7 @@ background music mixing, and branded intro/outro sequences.
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -36,6 +37,22 @@ logger = logging.getLogger(__name__)
 _FPS = 24
 _VIDEO_WIDTH = 1920
 _VIDEO_HEIGHT = 1080
+_THREADS = os.cpu_count() or 4
+
+
+# ── Encoder detection ─────────────────────────────────────────────────────────
+
+def _detect_hw_encoder() -> tuple[str, list[str]]:
+    """Return (codec, ffmpeg_params) using the fastest available encoder.
+
+    Priority: libx264 ultrafast (Python per-frame is the bottleneck,
+    not the encoder — so use fastest preset with quality-preserving CRF).
+    """
+    return "libx264", ["-preset", "ultrafast", "-crf", "18"]
+
+
+_HW_CODEC, _HW_PARAMS = _detect_hw_encoder()
+logger.info("Video encoder: %s %s", _HW_CODEC, _HW_PARAMS)
 _CAPTION_FONT_SIZE = 55
 _CAPTION_STROKE_WIDTH = 3
 
@@ -88,7 +105,11 @@ def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[
 
 
 def _draw_caption(frame: np.ndarray, caption: str) -> np.ndarray:
-    """Draw white+stroke caption text on a numpy video frame using PIL."""
+    """Draw white+stroke caption text on a numpy video frame using PIL.
+
+    NOTE: This is only used for one-off rendering (intro/outro).
+    For segment captions, use _render_caption_overlay() + CompositeVideoClip instead.
+    """
     font = _get_font(_CAPTION_FONT_SIZE)
     lines = _wrap_text(caption, font, max_width=1700)
 
@@ -103,13 +124,43 @@ def _draw_caption(frame: np.ndarray, caption: str) -> np.ndarray:
         bbox = draw.textbbox((0, 0), line, font=font)
         text_w = bbox[2] - bbox[0]
         x = (_VIDEO_WIDTH - text_w) // 2
-        # Stroke (shadow outline)
         sw = _CAPTION_STROKE_WIDTH
         for dx in range(-sw, sw + 1):
             for dy in range(-sw, sw + 1):
                 if dx != 0 or dy != 0:
                     draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 255))
-        # Main text
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        y += line_height
+
+    return np.array(img)
+
+
+def _render_caption_overlay(caption: str, width: int = _VIDEO_WIDTH,
+                            height: int = _VIDEO_HEIGHT) -> np.ndarray:
+    """Pre-render caption text as a transparent RGBA overlay (rendered ONCE per clip).
+
+    Returns a numpy array (H, W, 4) suitable for ImageClip(transparent=True).
+    This eliminates the per-frame PIL text draw that was the #1 performance bottleneck.
+    """
+    font = _get_font(_CAPTION_FONT_SIZE)
+    lines = _wrap_text(caption, font, max_width=width - 220)
+
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    line_height = _CAPTION_FONT_SIZE + 12
+    total_height = len(lines) * line_height
+    y = int(height * 0.82) - total_height // 2
+
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        text_w = bbox[2] - bbox[0]
+        x = (width - text_w) // 2
+        sw = _CAPTION_STROKE_WIDTH
+        for dx in range(-sw, sw + 1):
+            for dy in range(-sw, sw + 1):
+                if dx != 0 or dy != 0:
+                    draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 220))
         draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
         y += line_height
 
@@ -118,34 +169,53 @@ def _draw_caption(frame: np.ndarray, caption: str) -> np.ndarray:
 
 # ── Ken Burns zoom ────────────────────────────────────────────────────────────
 
-def _apply_ken_burns(clip, duration: float, zoom_pct: float = 0.05):
+def _apply_ken_burns(clip, duration: float, zoom_pct: float = 0.05, is_static: bool = False):
     """Return a clip with subtle slow-zoom (Ken Burns) effect.
 
-    Renders at slightly larger size, then crops a moving window that
-    slowly zooms in from 1.0x to (1 + zoom_pct)x over the clip duration.
+    For static images (is_static=True): pre-caches the upscaled frame once
+    instead of re-decoding it every frame — major performance win.
     """
     if zoom_pct <= 0:
         return clip
 
     w, h = _VIDEO_WIDTH, _VIDEO_HEIGHT
-    # Upscale the base clip so we have extra pixels to pan/zoom into
     upscale = 1 + zoom_pct
-    big = clip.resize((int(w * upscale), int(h * upscale)))
+    bw, bh = int(w * upscale), int(h * upscale)
 
-    def _zoom_frame(get_frame, t):
-        progress = t / max(duration, 0.1)            # 0 → 1
-        scale = 1.0 + zoom_pct * progress            # 1.0 → 1.05
-        cw = int(w / scale * upscale)
-        ch = int(h / scale * upscale)
-        bw, bh = int(w * upscale), int(h * upscale)
-        x1 = (bw - cw) // 2
-        y1 = (bh - ch) // 2
-        frame = get_frame(t)[y1:y1 + ch, x1:x1 + cw]
-        # Resize back to target resolution
-        pil = Image.fromarray(frame).resize((w, h), Image.LANCZOS)
-        return np.array(pil)
+    if is_static:
+        # Pre-render the upscaled frame ONCE (static image doesn't change)
+        raw_frame = clip.get_frame(0)
+        cached_big = np.array(
+            Image.fromarray(raw_frame).resize((bw, bh), Image.BILINEAR)
+        )
 
-    return big.fl(_zoom_frame, apply_to=["mask"]).set_duration(duration)
+        def _zoom_static(t):
+            progress = t / max(duration, 0.1)
+            scale = 1.0 + zoom_pct * progress
+            cw = int(w / scale * upscale)
+            ch = int(h / scale * upscale)
+            x1 = (bw - cw) // 2
+            y1 = (bh - ch) // 2
+            crop = cached_big[y1:y1 + ch, x1:x1 + cw]
+            return np.array(Image.fromarray(crop).resize((w, h), Image.BILINEAR))
+
+        from moviepy.editor import VideoClip
+        return VideoClip(_zoom_static, duration=duration)
+    else:
+        # Video clip — must decode each frame
+        big = clip.resize((bw, bh))
+
+        def _zoom_frame(get_frame, t):
+            progress = t / max(duration, 0.1)
+            scale = 1.0 + zoom_pct * progress
+            cw = int(w / scale * upscale)
+            ch = int(h / scale * upscale)
+            x1 = (bw - cw) // 2
+            y1 = (bh - ch) // 2
+            frame = get_frame(t)[y1:y1 + ch, x1:x1 + cw]
+            return np.array(Image.fromarray(frame).resize((w, h), Image.BILINEAR))
+
+        return big.fl(_zoom_frame, apply_to=["mask"]).set_duration(duration)
 
 
 # ── Intro / Outro ─────────────────────────────────────────────────────────────
@@ -305,16 +375,19 @@ def build_video(
             )
 
         # Ken Burns slow-zoom
+        is_static = (ext != ".mp4")
         if KEN_BURNS_ZOOM > 0:
-            base = _apply_ken_burns(base, duration, KEN_BURNS_ZOOM)
+            base = _apply_ken_burns(base, duration, KEN_BURNS_ZOOM, is_static=is_static)
 
+        # Caption as pre-rendered overlay (rendered ONCE, not per-frame)
         caption = segment.get("caption", "")
         if caption:
-            def _make_captioner(cap):
-                def _add(frame):
-                    return _draw_caption(frame, cap)
-                return _add
-            clip = base.fl_image(_make_captioner(caption))
+            overlay = _render_caption_overlay(caption)
+            caption_clip = (
+                ImageClip(overlay, ismask=False, transparent=True)
+                .set_duration(duration)
+            )
+            clip = CompositeVideoClip([base, caption_clip])
         else:
             clip = base
 
@@ -361,12 +434,14 @@ def build_video(
         else:
             final = final.set_audio(music)
 
+    logger.info("Encoding with %s (threads=%d)", _HW_CODEC, _THREADS)
     final.write_videofile(
         output_path,
         fps=_FPS,
-        codec="libx264",
+        codec=_HW_CODEC,
         audio_codec="aac",
-        threads=4,
+        threads=_THREADS,
+        ffmpeg_params=_HW_PARAMS,
         logger=None,
     )
     logger.info("Video written to %s", output_path)

@@ -22,7 +22,7 @@ import json
 import os
 import sys
 import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 # ── .env reader ───────────────────────────────────────────────────────────────
@@ -184,11 +184,12 @@ _pipeline_job: dict = {
     "_content":      None,
     "_video_path":   None,
     "_thumb_path":   None,
+    "_shorts_paths": [],
 }
 _pipeline_lock = threading.Lock()
 
 
-def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None) -> None:
+def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, shorts_count=0) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
     try:
         from pipeline import run_preview
@@ -205,9 +206,10 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
         video_path, thumb_path, content, vid_id = run_preview(
             topic, progress_cb=_progress,
             script_text=script_text, seo=seo, thumb_data_url=thumb_data_url,
-            guidance=guidance,
+            guidance=guidance, shorts_count=shorts_count,
         )
         slug = video_path.replace("\\", "/").split("/")[-1]  # just the filename
+        shorts_paths = content.pop("_shorts_paths", [])
         with _pipeline_lock:
             _pipeline_job.update({
                 "status":        "ready",
@@ -216,9 +218,11 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
                 "thumbnail_url": "/thumbnail.jpg",
                 "title":         content.get("title", topic),
                 "vid_db_id":     vid_id,
+                "shorts_count":  len(shorts_paths),
                 "_content":      content,
                 "_video_path":   video_path,
                 "_thumb_path":   thumb_path,
+                "_shorts_paths": shorts_paths,
             })
     except Exception as exc:
         with _pipeline_lock:
@@ -241,6 +245,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response(safe)
         elif path == "/api/channels":
             self._handle_channels_get()
+        elif path == "/api/social/platforms":
+            self._handle_social_platforms_get()
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -259,7 +265,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "status": "idle", "topic": None, "message": "",
                     "video_url": None, "thumbnail_url": None, "title": None,
                     "vid_db_id": None, "youtube_url": None, "error": None,
-                    "_content": None, "_video_path": None, "_thumb_path": None,
+                    "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             self._json_response({"ok": True})
         elif path == "/api/settings":
@@ -270,6 +276,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channel_add()
         elif path == "/api/channels/default":
             self._handle_channel_set_default()
+        elif path == "/api/social/config":
+            self._handle_social_config_post()
+        elif path == "/api/social/upload":
+            self._handle_social_upload()
         else:
             self.send_response(404)
             self.end_headers()
@@ -280,6 +290,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_music_delete()
         elif path.startswith("/api/channels/"):
             self._handle_channel_remove(path)
+        elif path.startswith("/api/social/platforms/"):
+            self._handle_social_platform_remove(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -300,7 +312,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "status": "running", "topic": topic, "message": "Starting…",
                     "video_url": None, "thumbnail_url": None, "title": None,
                     "vid_db_id": None, "youtube_url": None, "error": None,
-                    "_content": None, "_video_path": None, "_thumb_path": None,
+                    "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             # Optional pre-computed assets from dashboard
             script_text    = data.get("scriptText", "").strip() or None
@@ -309,6 +321,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             seo_tags_raw   = data.get("seoTags", "").strip() or None
             thumb_data_url = data.get("thumbDataUrl", "").strip() or None
             guidance       = data.get("guidance", "").strip() or None
+            shorts_count   = int(data.get("shortsCount", 0) or 0)
             seo = None
             if seo_title or seo_description or seo_tags_raw:
                 seo = {
@@ -320,7 +333,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 target=_run_pipeline_bg,
                 args=(topic,),
                 kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url,
-                        "guidance": guidance},
+                        "guidance": guidance, "shorts_count": shorts_count},
                 daemon=True,
             )
             t.start()
@@ -348,8 +361,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             thumb_path = _pipeline_job["_thumb_path"]
             content    = _pipeline_job["_content"]
             vid_db_id  = _pipeline_job["vid_db_id"]
+            shorts_paths = _pipeline_job.get("_shorts_paths", [])
         if job_status != "ready":
             self._json_response({"ok": False, "error": f"No video ready (status: {job_status})"}); return
+        # Validate video file before attempting upload
+        if not video_path or not os.path.isfile(video_path):
+            self._json_response({"ok": False, "error": "Video file not found on disk"}); return
+        if os.path.getsize(video_path) < 1024:
+            self._json_response({"ok": False, "error": "Video file is too small — likely corrupt"}); return
         with _pipeline_lock:
             _pipeline_job["status"] = "uploading"
             _pipeline_job["message"] = "Uploading to YouTube…"
@@ -362,10 +381,31 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             duration_s = sum(seg.get("duration_s", 45) for seg in segments)
             log_video_complete(vid_db_id, content.get("title", ""), youtube_id, duration_s)
             yt_url = f"https://youtube.com/watch?v={youtube_id}"
+            # Upload Shorts if any were generated
+            shorts_uploaded = 0
+            for sp in (shorts_paths or []):
+                try:
+                    import os as _os
+                    if not _os.path.isfile(sp):
+                        continue
+                    short_title = f"{content.get('title', '')} #Shorts"
+                    short_content = {
+                        "title": short_title[:100],
+                        "description": content.get("description", ""),
+                        "tags": content.get("tags", []) + ["Shorts"],
+                    }
+                    _upload(sp, thumb_path, short_content, channel_slug=channel_slug)
+                    shorts_uploaded += 1
+                except Exception as se:
+                    import logging as _log
+                    _log.getLogger(__name__).error("Shorts upload failed: %s", se)
             with _pipeline_lock:
+                msg = f"✓ Uploaded! {yt_url}"
+                if shorts_uploaded:
+                    msg += f" + {shorts_uploaded} Short(s)"
                 _pipeline_job.update({
                     "status":      "done",
-                    "message":     f"✓ Uploaded! {yt_url}",
+                    "message":     msg,
                     "youtube_url": yt_url,
                 })
             self._json_response({"ok": True, "youtube_url": yt_url})
@@ -499,6 +539,91 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         ok = remove_channel(slug)
         self._json_response({"ok": ok, "error": None if ok else "Channel not found"})
 
+    # ── Social platform endpoints ─────────────────────────────────────────────
+
+    def _handle_social_platforms_get(self) -> None:
+        """GET /api/social/platforms — List configured social platforms."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        from social_uploader import list_platforms
+        self._json_response(list_platforms())
+
+    def _handle_social_config_post(self) -> None:
+        """POST /api/social/config — Save platform credentials.
+        Body: {platform, access_token, user_id/page_id, enabled, ...}"""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            platform = data.pop("platform", "").lower().strip()
+            if platform not in ("instagram", "facebook", "tiktok"):
+                self._json_response({"ok": False, "error": "Invalid platform"})
+                return
+            from social_uploader import save_platform_config
+            save_platform_config(platform, data)
+            self._json_response({"ok": True})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_social_platform_remove(self, path: str) -> None:
+        """DELETE /api/social/platforms/<name> — Remove a social platform config."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        platform = path.replace("/api/social/platforms/", "").strip("/")
+        from social_uploader import remove_platform
+        ok = remove_platform(platform)
+        self._json_response({"ok": ok, "error": None if ok else "Platform not found"})
+
+    def _handle_social_upload(self) -> None:
+        """POST /api/social/upload — Upload Shorts to selected social platforms.
+        Body: {platforms: ["instagram", "facebook", "tiktok"]}
+        Uses the Shorts from the current pipeline job."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            target_platforms = data.get("platforms", [])
+            if not target_platforms:
+                self._json_response({"ok": False, "error": "No platforms selected"})
+                return
+        except Exception:
+            self._json_response({"ok": False, "error": "Invalid request body"})
+            return
+
+        with _pipeline_lock:
+            shorts_paths = _pipeline_job.get("_shorts_paths", [])
+            content = _pipeline_job.get("_content")
+            job_status = _pipeline_job["status"]
+
+        if job_status not in ("ready", "done"):
+            self._json_response({"ok": False, "error": f"No video ready (status: {job_status})"})
+            return
+        if not shorts_paths:
+            self._json_response({"ok": False, "error": "No Shorts available to upload"})
+            return
+
+        from social_uploader import upload_to_platforms
+        title = content.get("title", "") if content else ""
+        description = content.get("description", "") if content else ""
+
+        all_results = {}
+        for sp in shorts_paths:
+            if not os.path.isfile(sp):
+                continue
+            results = upload_to_platforms(
+                sp, title=title, description=description,
+                platforms_list=target_platforms,
+            )
+            for platform, result in results.items():
+                if platform not in all_results:
+                    all_results[platform] = result
+                elif not result["ok"]:
+                    all_results[platform] = result  # keep error
+
+        self._json_response({"ok": True, "results": all_results})
+
     def _handle_env(self) -> dict:
         env = _read_env(_ENV_PATH)
         return {k: v for k, v in env.items() if k in _EXPOSED_KEYS}
@@ -526,7 +651,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("", port), DashboardHandler)
+    server = ThreadingHTTPServer(("", port), DashboardHandler)
     db_status = "✓ SQLite connected" if _DB_AVAILABLE else "✗ SQLite unavailable"
     print(f"╔══════════════════════════════════════════════════════════╗")
     print(f"║  YouTube Automation Dashboard  →  http://localhost:{port}  ║")

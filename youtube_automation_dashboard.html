@@ -886,6 +886,110 @@ canvas{display:block;width:100%;height:auto}
   </div>
 </div>
 
+<!-- SOCIAL PLATFORMS (Instagram, Facebook, TikTok) -->
+<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 10px">Social Platforms — Shorts / Reels</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+  <div class="info-box" style="margin-bottom:10px">Post your YouTube Shorts as Reels on Instagram, Facebook, and TikTok. Configure each platform below, then enable the ones you want during upload.</div>
+
+  <div id="social-platforms-list" style="margin-bottom:14px">
+    <div style="font-size:11px;color:var(--muted);padding:8px 0;text-align:center">Loading platforms…</div>
+  </div>
+
+  <!-- Instagram -->
+  <details class="social-platform-details" style="margin-bottom:10px">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--fg);padding:8px 0">
+      <span style="margin-right:6px">📸</span> Instagram Reels
+      <span id="ig-status-badge" style="font-size:10px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg4);color:var(--muted)">Not configured</span>
+    </summary>
+    <div style="padding:8px 0 0 0">
+      <div class="grid2" style="margin-bottom:8px">
+        <div>
+          <label>Instagram User ID</label>
+          <input type="text" id="ig-user-id" placeholder="e.g. 17841405123456" style="margin-bottom:0"/>
+        </div>
+        <div>
+          <label>Long-lived Access Token</label>
+          <input type="password" id="ig-access-token" placeholder="EAA..." style="margin-bottom:0"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="ig-enabled"/> Enable Instagram uploads
+        </label>
+        <button class="btn btn-green btn-sm" onclick="saveSocialPlatform('instagram')">Save</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6">
+        Requires: Instagram Professional account linked to a Facebook Page.<br>
+        Generate a long-lived token at <a href="https://developers.facebook.com/tools/explorer/" target="_blank" style="color:var(--accent)">Graph API Explorer</a> with <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">instagram_basic, instagram_content_publish, pages_show_list</code> permissions.
+      </div>
+    </div>
+  </details>
+
+  <!-- Facebook -->
+  <details class="social-platform-details" style="margin-bottom:10px">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--fg);padding:8px 0">
+      <span style="margin-right:6px">📘</span> Facebook Reels
+      <span id="fb-status-badge" style="font-size:10px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg4);color:var(--muted)">Not configured</span>
+    </summary>
+    <div style="padding:8px 0 0 0">
+      <div class="grid2" style="margin-bottom:8px">
+        <div>
+          <label>Facebook Page ID</label>
+          <input type="text" id="fb-page-id" placeholder="e.g. 123456789012345" style="margin-bottom:0"/>
+        </div>
+        <div>
+          <label>Page Access Token</label>
+          <input type="password" id="fb-access-token" placeholder="EAA..." style="margin-bottom:0"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="fb-enabled"/> Enable Facebook uploads
+        </label>
+        <button class="btn btn-green btn-sm" onclick="saveSocialPlatform('facebook')">Save</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6">
+        Requires: Facebook Page with <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">pages_manage_posts</code> permission.<br>
+        Get Page Access Token from <a href="https://developers.facebook.com/tools/explorer/" target="_blank" style="color:var(--accent)">Graph API Explorer</a>.
+      </div>
+    </div>
+  </details>
+
+  <!-- TikTok -->
+  <details class="social-platform-details" style="margin-bottom:4px">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--fg);padding:8px 0">
+      <span style="margin-right:6px">🎵</span> TikTok
+      <span id="tt-status-badge" style="font-size:10px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg4);color:var(--muted)">Not configured</span>
+    </summary>
+    <div style="padding:8px 0 0 0">
+      <div class="grid2" style="margin-bottom:8px">
+        <div>
+          <label>Client Key</label>
+          <input type="text" id="tt-client-key" placeholder="Your TikTok app client key" style="margin-bottom:0"/>
+        </div>
+        <div>
+          <label>Client Secret</label>
+          <input type="password" id="tt-client-secret" placeholder="Your TikTok app client secret" style="margin-bottom:0"/>
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <label>Access Token</label>
+        <input type="password" id="tt-access-token" placeholder="Access token from OAuth flow" style="margin-bottom:0"/>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="tt-enabled"/> Enable TikTok uploads
+        </label>
+        <button class="btn btn-green btn-sm" onclick="saveSocialPlatform('tiktok')">Save</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.6">
+        Requires: TikTok Developer App with <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">video.publish</code> scope.<br>
+        Create app at <a href="https://developers.tiktok.com" target="_blank" style="color:var(--accent)">developers.tiktok.com</a>, then complete OAuth to get access token.
+      </div>
+    </div>
+  </details>
+</div>
+
 </div>
 
 <!-- ===== PIPELINE CODE ===== -->
@@ -2764,6 +2868,7 @@ function loadSettings(){ loadAllSettings(); }
     autoTestConnections(); // fire-and-forget: test every key that is set
     loadFromDB();          // pull pipeline stats into tracker + costs panels
     loadYouTubeChannels(); // populate channel list + upload dropdown
+    loadSocialPlatforms(); // populate social platforms list + pipeline toggles
     // Resume global progress bar if pipeline is already running
     fetch('/api/pipeline/status').then(function(r){return r.json();}).then(function(d){
       if(d.status==='running'){gpbStart();}
@@ -3746,7 +3851,7 @@ var _plStepMap={
 
 function _plSetStep(msg){
   // Reset all steps to idle first
-  ['pls-script','pls-audio','pls-images','pls-thumb','pls-build'].forEach(function(id){
+  ['pls-script','pls-audio','pls-images','pls-thumb','pls-build','pls-shorts'].forEach(function(id){
     var el=document.getElementById(id);
     if(el){el.className='pl-step idle';}
   });
@@ -3756,9 +3861,10 @@ function _plSetStep(msg){
   else if(m.includes('audio'))      activeId='pls-audio';
   else if(m.includes('visual')||m.includes('image')||m.includes('fetching')) activeId='pls-images';
   else if(m.includes('thumbnail'))  activeId='pls-thumb';
+  else if(m.includes('short'))      activeId='pls-shorts';
   else if(m.includes('building')||m.includes('video')) activeId='pls-build';
   // Mark previous steps done
-  var order=['pls-script','pls-audio','pls-images','pls-thumb','pls-build'];
+  var order=['pls-script','pls-audio','pls-images','pls-thumb','pls-build','pls-shorts'];
   var activeIdx=activeId?order.indexOf(activeId):-1;
   order.forEach(function(id,idx){
     var el=document.getElementById(id);
@@ -3802,6 +3908,11 @@ function runPipelineForTopic(itemOrTopic){
     payload.seoTags=item.seoTags||'';
   }
   if(item.hasThumb&&item.thumbDataUrl)payload.thumbDataUrl=item.thumbDataUrl;
+  // Shorts option
+  var shortsCheck=document.getElementById('pl-shorts-check');
+  if(shortsCheck&&shortsCheck.checked){
+    payload.shortsCount=parseInt(document.getElementById('pl-shorts-count').value)||2;
+  }
   fetch('/api/pipeline/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(r){return r.json();})
     .then(function(d){
@@ -3850,11 +3961,15 @@ function _plShowPreview(d){
   var thumb=document.getElementById('pl-thumb-img');
   thumb.src=(d.thumbnail_url||'/thumbnail.jpg')+'?t='+ts;
   document.getElementById('pl-video-title').textContent=d.title||'';
+  if(d.shorts_count>0){
+    document.getElementById('pl-video-title').textContent=(d.title||'')+' + '+d.shorts_count+' Short(s)';
+  }
   document.getElementById('pl-preview-section').style.display='block';
   // all steps done
-  ['pls-script','pls-audio','pls-images','pls-thumb','pls-build'].forEach(function(id){
+  ['pls-script','pls-audio','pls-images','pls-thumb','pls-build','pls-shorts'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.className='pl-step done';
   });
+  _updatePipelineSocialSection(); // show social upload options if platforms configured
 }
 
 function _plShowDone(ytUrl){
@@ -3901,6 +4016,143 @@ function cancelPipeline(){
   _plStatus='idle';
   document.getElementById('pl-modal').style.display='none';
 }
+
+// ===== SOCIAL PLATFORMS =====
+var _socialPlatforms=[];
+
+function loadSocialPlatforms(){
+  fetch('/api/social/platforms').then(function(r){return r.json();}).then(function(list){
+    _socialPlatforms=list||[];
+    _renderSocialPlatformsList();
+    _updateSocialBadges();
+    _updatePipelineSocialSection();
+  }).catch(function(){});
+}
+
+function _renderSocialPlatformsList(){
+  var el=document.getElementById('social-platforms-list');
+  if(!el)return;
+  if(!_socialPlatforms.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:6px 0;text-align:center">No platforms configured yet</div>';
+    return;
+  }
+  var html='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  _socialPlatforms.forEach(function(p){
+    var icon=p.platform==='instagram'?'📸':p.platform==='facebook'?'📘':'🎵';
+    var statusColor=p.connected&&p.enabled?'var(--green)':p.connected?'var(--amber)':'var(--muted)';
+    var statusText=p.connected&&p.enabled?'Active':p.connected?'Connected (disabled)':'Not configured';
+    html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;min-width:140px">';
+    html+=icon+' <strong>'+p.platform.charAt(0).toUpperCase()+p.platform.slice(1)+'</strong>';
+    if(p.account_name)html+=' <span style="color:var(--muted);font-size:10px">('+p.account_name+')</span>';
+    html+='<div style="font-size:10px;color:'+statusColor+';margin-top:3px">'+statusText+'</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+function _updateSocialBadges(){
+  _socialPlatforms.forEach(function(p){
+    var badgeId=p.platform==='instagram'?'ig-status-badge':p.platform==='facebook'?'fb-status-badge':'tt-status-badge';
+    var badge=document.getElementById(badgeId);
+    if(!badge)return;
+    if(p.connected&&p.enabled){
+      badge.textContent='Active';badge.style.background='rgba(61,219,160,0.15)';badge.style.color='var(--green)';
+    }else if(p.connected){
+      badge.textContent='Connected';badge.style.background='rgba(247,194,78,0.15)';badge.style.color='var(--amber)';
+    }else{
+      badge.textContent='Not configured';badge.style.background='var(--bg4)';badge.style.color='var(--muted)';
+    }
+  });
+}
+
+function _updatePipelineSocialSection(){
+  var section=document.getElementById('pl-social-section');
+  if(!section)return;
+  var hasAny=_socialPlatforms.some(function(p){return p.connected&&p.enabled;});
+  section.style.display=hasAny?'block':'none';
+  // Pre-check enabled platforms
+  _socialPlatforms.forEach(function(p){
+    var checkId=p.platform==='instagram'?'pl-social-ig':p.platform==='facebook'?'pl-social-fb':'pl-social-tt';
+    var cb=document.getElementById(checkId);
+    if(cb){
+      cb.checked=p.connected&&p.enabled;
+      cb.disabled=!p.connected;
+      cb.parentElement.style.opacity=p.connected?'1':'0.4';
+    }
+  });
+}
+
+function saveSocialPlatform(platform){
+  var config={platform:platform,enabled:false};
+  if(platform==='instagram'){
+    config.user_id=document.getElementById('ig-user-id').value.trim();
+    config.access_token=document.getElementById('ig-access-token').value.trim();
+    config.enabled=document.getElementById('ig-enabled').checked;
+    config.account_name='IG User '+config.user_id.slice(-4);
+  }else if(platform==='facebook'){
+    config.page_id=document.getElementById('fb-page-id').value.trim();
+    config.access_token=document.getElementById('fb-access-token').value.trim();
+    config.enabled=document.getElementById('fb-enabled').checked;
+    config.account_name='Page '+config.page_id.slice(-4);
+  }else if(platform==='tiktok'){
+    config.client_key=document.getElementById('tt-client-key').value.trim();
+    config.client_secret=document.getElementById('tt-client-secret').value.trim();
+    config.access_token=document.getElementById('tt-access-token').value.trim();
+    config.enabled=document.getElementById('tt-enabled').checked;
+    config.account_name='TikTok';
+  }
+  fetch('/api/social/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        showToast(platform.charAt(0).toUpperCase()+platform.slice(1)+' saved!','green');
+        loadSocialPlatforms();
+      }else{
+        showToast('Error: '+(d.error||'Unknown'),'red');
+      }
+    })
+    .catch(function(e){showToast('Network error: '+e.message,'red');});
+}
+
+function uploadToSocialPlatforms(){
+  var checks=document.querySelectorAll('.social-pl-check:checked');
+  var platforms=[];
+  checks.forEach(function(cb){platforms.push(cb.value);});
+  if(!platforms.length){showToast('Select at least one platform','amber');return;}
+
+  var btn=document.getElementById('pl-social-upload-btn');
+  var status=document.getElementById('pl-social-status');
+  btn.disabled=true;btn.textContent='Uploading…';
+  status.textContent='Posting Shorts to '+platforms.join(', ')+'…';
+  status.style.color='var(--amber)';
+
+  fetch('/api/social/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({platforms:platforms})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      btn.disabled=false;btn.textContent='Post to Selected Platforms';
+      if(d.ok){
+        var results=d.results||{};
+        var msgs=[];
+        Object.keys(results).forEach(function(p){
+          var r=results[p];
+          msgs.push(p+': '+(r.ok?'✓ Posted':'✗ '+r.error));
+        });
+        status.textContent=msgs.join(' | ');
+        status.style.color='var(--green)';
+        showToast('Social upload complete!','green');
+      }else{
+        status.textContent='Error: '+(d.error||'Unknown');
+        status.style.color='var(--red)';
+      }
+    })
+    .catch(function(e){
+      btn.disabled=false;btn.textContent='Post to Selected Platforms';
+      status.textContent='Network error: '+e.message;
+      status.style.color='var(--red)';
+    });
+}
+
 </script>
 
 <!-- ===== PIPELINE PREVIEW MODAL ===== -->
@@ -3919,7 +4171,26 @@ function cancelPipeline(){
       <div class="pl-step idle" id="pls-images"><span class="pl-step-icon">&#128247;</span> Stock image fetch</div>
       <div class="pl-step idle" id="pls-thumb"><span class="pl-step-icon">&#128444;&#65038;</span> Thumbnail creation</div>
       <div class="pl-step idle" id="pls-build"><span class="pl-step-icon">&#127917;</span> Video assembly (slowest step)</div>
+      <div class="pl-step idle" id="pls-shorts"><span class="pl-step-icon">&#128250;</span> YouTube Shorts generation</div>
     </div>
+
+    <!-- Shorts option -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--bg3);border-radius:8px">
+      <label style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;margin:0">
+        <input type="checkbox" id="pl-shorts-check" style="margin-right:4px"> Generate YouTube Shorts
+      </label>
+      <select id="pl-shorts-count" style="font-size:11px;padding:3px 8px;width:auto" disabled>
+        <option value="1">1 Short</option>
+        <option value="2" selected>2 Shorts</option>
+        <option value="3">3 Shorts</option>
+      </select>
+      <span style="font-size:10px;color:var(--muted)">(vertical 1080&#215;1920, under 60s each)</span>
+    </div>
+    <script>
+    document.getElementById('pl-shorts-check').addEventListener('change',function(){
+      document.getElementById('pl-shorts-count').disabled=!this.checked;
+    });
+    </script>
 
     <!-- Status message -->
     <div id="pl-status-msg" style="font-size:12px;color:var(--muted);text-align:center;min-height:18px;margin-bottom:8px"></div>
@@ -3953,6 +4224,27 @@ function cancelPipeline(){
         <button class="btn btn-green" style="flex:1;min-width:160px" onclick="approvePipelineUpload()" id="pl-upload-btn">&#128228; Upload to YouTube</button>
         <button class="btn btn-danger btn-sm" style="flex:0" onclick="cancelPipeline()">&#128465; Discard</button>
       </div>
+
+      <!-- Social Platform Upload (Shorts → Reels) -->
+      <div id="pl-social-section" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(124,109,250,0.06);border:1px solid rgba(124,109,250,0.15);border-radius:8px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px">&#127760; Also post Shorts as Reels</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
+            <input type="checkbox" class="social-pl-check" value="instagram" id="pl-social-ig"/> 📸 Instagram
+          </label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
+            <input type="checkbox" class="social-pl-check" value="facebook" id="pl-social-fb"/> 📘 Facebook
+          </label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
+            <input type="checkbox" class="social-pl-check" value="tiktok" id="pl-social-tt"/> 🎵 TikTok
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="uploadToSocialPlatforms()" id="pl-social-upload-btn">&#128228; Post to Selected Platforms</button>
+          <span id="pl-social-status" style="font-size:11px;color:var(--muted)"></span>
+        </div>
+      </div>
+
       <div style="font-size:10px;color:var(--dim);margin-top:6px">Video is saved locally at <code style="background:var(--bg4);padding:1px 5px;border-radius:3px">output/final.mp4</code> — you can also open that file directly.</div>
     </div>
 

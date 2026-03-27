@@ -8,14 +8,18 @@ All business logic lives in the modules it calls.
 import glob
 import logging
 import os
+import shutil
 
 from audio_generator import generate_audio_segments
 from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, VISUAL_MODE
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _THUMB_OUT = os.path.join(_BASE_DIR, "thumbnail.jpg")
+_IMAGES_DIR = os.path.join(_BASE_DIR, "images")
+_AUDIO_DIR = os.path.join(_BASE_DIR, "audio")
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start
+from shorts_builder import build_shorts
 from thumbnail import make_thumbnail
 from video_builder import build_video
 from visual_fetcher import fetch_segment_images, fetch_segment_videos
@@ -34,6 +38,19 @@ def _cleanup_temp_files() -> None:
                 logger.debug("Cleaned up temp file: %s", f)
             except OSError:
                 pass
+
+
+def _cleanup_media_dirs() -> None:
+    """Wipe images/ and audio/ directories before each pipeline run.
+
+    This prevents stale files from a previous run from leaking into the
+    current build (e.g. leftover segments that no longer match).
+    """
+    for d in (_IMAGES_DIR, _AUDIO_DIR):
+        if os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+            logger.debug("Cleaned media dir: %s", d)
+        os.makedirs(d, exist_ok=True)
 
 
 def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | None:
@@ -55,7 +72,7 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         thumb_data_url: str | None = None, channel_slug: str | None = None,
-        guidance: str | None = None) -> str:
+        guidance: str | None = None, shorts_count: int = 0) -> str:
     """Execute the full pipeline for a given topic.
 
     Args:
@@ -68,22 +85,30 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                         If provided, skips thumbnail generation.
         channel_slug:   YouTube channel slug for multi-account upload.
         guidance:       Optional creator instructions for AI script generation.
+        shorts_count:   Number of Shorts to generate (0–3). 0 = skip.
 
     Returns:
         The YouTube video ID on success.
     """
     logger.info("Pipeline starting: %s", topic)
     vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    _cleanup_media_dirs()
 
     try:
         # Step 1 — Script (use dashboard script if provided, else generate fresh)
         if script_text:
             logger.info("Using pre-written script from dashboard Script Writer")
             content = script_text_to_segments(script_text, topic, seo_override=seo)
-            log_cost("anthropic", "script_convert", units=500, cost_usd=0.001, video_id=vid_id)
+            usage = content.pop("_usage", {})
+            log_cost("anthropic", "script_convert",
+                     units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
+                     cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
             content = generate_script(topic, guidance=guidance)
-            log_cost("anthropic", "script", units=3000, cost_usd=0.07, video_id=vid_id)
+            usage = content.pop("_usage", {})
+            log_cost("anthropic", "script",
+                     units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
+                     cost_usd=usage.get("cost_usd", 0.07), video_id=vid_id)
             # Apply SEO overrides if provided from SEO tab
             if seo:
                 if seo.get("title"):       content["title"]       = seo["title"]
@@ -127,8 +152,31 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         video_path = build_video(segments, audio_files, visual_files,
                                  title=content.get("title"), music_path=music)
 
-        # Step 6 — Upload
+        # Step 5b — YouTube Shorts (optional)
+        short_paths = []
+        if shorts_count and shorts_count > 0:
+            logger.info("Building %d YouTube Short(s)…", shorts_count)
+            short_paths = build_shorts(
+                segments, audio_files, visual_files,
+                title=content.get("title"), count=shorts_count, music_path=music,
+            )
+
+        # Step 6 — Upload main video
         youtube_id = upload_video(video_path, thumbnail_path, content, channel_slug=channel_slug)
+
+        # Step 6b — Upload Shorts
+        for sp in short_paths:
+            try:
+                short_title = f"{content.get('title', topic)} #Shorts"
+                short_content = {
+                    "title": short_title[:100],
+                    "description": content.get("description", ""),
+                    "tags": content.get("tags", []) + ["Shorts"],
+                }
+                upload_video(sp, thumbnail_path, short_content, channel_slug=channel_slug)
+                logger.info("Uploaded Short: %s", sp)
+            except Exception as e:
+                logger.error("Failed to upload Short %s: %s", sp, e)
 
         # Step 7 — Record success
         duration_s = sum(seg.get("duration_s", 45) for seg in segments)
@@ -149,7 +197,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
-               guidance: str | None = None) -> tuple:
+               guidance: str | None = None, shorts_count: int = 0) -> tuple:
     """Run pipeline steps 1–5 (generate + build video) WITHOUT uploading.
 
     Args:
@@ -159,9 +207,11 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         seo:            Dict with 'title', 'description', 'tags' from SEO tab.
         thumb_data_url: Base64 JPEG data URL from the dashboard Thumbnail tab.
         guidance:       Optional creator instructions for AI script generation.
+        shorts_count:   Number of Shorts to generate (0–3). 0 = skip.
 
     Returns:
         (video_path, thumbnail_path, content_dict, vid_db_id)
+        content_dict will contain '_shorts_paths' list if shorts were generated.
     """
 
     def _p(msg: str) -> None:
@@ -170,16 +220,23 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         logger.info(msg)
 
     vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    _cleanup_media_dirs()
     try:
         # Step 1 — Script
         if script_text:
             _p("Converting your Script Writer script to pipeline format…")
             content = script_text_to_segments(script_text, topic, seo_override=seo)
-            log_cost("anthropic", "script_convert", units=500, cost_usd=0.001, video_id=vid_id)
+            usage = content.pop("_usage", {})
+            log_cost("anthropic", "script_convert",
+                     units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
+                     cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
             _p("Generating AI script…")
             content = generate_script(topic, guidance=guidance)
-            log_cost("anthropic", "script", units=3000, cost_usd=0.07, video_id=vid_id)
+            usage = content.pop("_usage", {})
+            log_cost("anthropic", "script",
+                     units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
+                     cost_usd=usage.get("cost_usd", 0.07), video_id=vid_id)
             if seo:
                 if seo.get("title"):       content["title"]       = seo["title"]
                 if seo.get("description"): content["description"] = seo["description"]
@@ -221,6 +278,15 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
         video_path = build_video(segments, audio_files, visual_files,
                                  title=content.get("title"), music_path=music)
+
+        # Build Shorts if requested
+        if shorts_count and shorts_count > 0:
+            _p(f"Building {shorts_count} YouTube Short(s)…")
+            short_paths = build_shorts(
+                segments, audio_files, visual_files,
+                title=content.get("title"), count=shorts_count, music_path=music,
+            )
+            content["_shorts_paths"] = short_paths
 
         _p("✓ Video ready for review!")
         return video_path, thumbnail_path, content, vid_id

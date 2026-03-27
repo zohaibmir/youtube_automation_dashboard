@@ -32,12 +32,25 @@ _GTTS_LANG = {
 # ── Edge-TTS (free, high quality) ────────────────────────────────────────────
 
 def _edge_tts_segment(text: str, path: str, voice: str = EDGE_TTS_VOICE) -> None:
-    """Generate audio using Microsoft Edge Neural TTS (free, no API key)."""
+    """Generate audio using Microsoft Edge Neural TTS (free, no API key).
+
+    Retries once on transient 503 errors from the WebSocket endpoint.
+    """
+    import time as _time
     import edge_tts
 
     async def _generate():
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(path)
+        for attempt in range(2):
+            try:
+                communicate = edge_tts.Communicate(text, voice)
+                await communicate.save(path)
+                return
+            except Exception as e:
+                if attempt == 0 and "503" in str(e):
+                    logger.warning("Edge-TTS 503 — retrying in 3s…")
+                    _time.sleep(3)
+                    continue
+                raise
 
     # edge-tts is async — run in a new event loop if needed
     try:
@@ -46,7 +59,6 @@ def _edge_tts_segment(text: str, path: str, voice: str = EDGE_TTS_VOICE) -> None
         loop = None
 
     if loop and loop.is_running():
-        # We're inside an existing event loop — run in a new thread
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as pool:
             pool.submit(lambda: asyncio.run(_generate())).result()
@@ -61,6 +73,7 @@ def _gtts_segment(text: str, path: str, lang_hint: str = "hi") -> None:
     import subprocess
     from gtts import gTTS
     tts = gTTS(text=text, lang=lang_hint, slow=False)
+    tts.timeout = 15  # prevent indefinite hang on Google's TTS endpoint
 
     if abs(GTTS_SPEECH_RATE - 1.0) < 0.01:
         tts.save(path)

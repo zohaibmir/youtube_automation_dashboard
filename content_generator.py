@@ -7,6 +7,7 @@ video scripts and topic ideas. Nothing else.
 import json
 import logging
 import re
+import time
 
 import anthropic
 
@@ -19,6 +20,43 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+
+# ── Per-model pricing (per 1M tokens) — update when Anthropic changes rates ──
+_MODEL_PRICING = {
+    "claude-sonnet-4-20250514":  {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+}
+_DEFAULT_PRICING = {"input": 3.00, "output": 15.00}
+
+
+def _calc_cost(model: str, usage) -> float:
+    """Calculate USD cost from an Anthropic message Usage object."""
+    pricing = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
+    return (
+        usage.input_tokens * pricing["input"] / 1_000_000
+        + usage.output_tokens * pricing["output"] / 1_000_000
+    )
+
+
+def _call_claude(model: str, max_tokens: int, messages: list) -> anthropic.types.Message:
+    """Call Claude with exponential backoff (3 attempts)."""
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            return client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        except (anthropic.APIConnectionError, anthropic.RateLimitError,
+                anthropic.InternalServerError) as e:
+            if attempt == _MAX_RETRIES:
+                raise
+            wait = 2 ** attempt
+            logger.warning("Claude retry %d/%d: %s (wait %ds)", attempt, _MAX_RETRIES, e, wait)
+            time.sleep(wait)
 
 
 def _extract_json(raw: str) -> dict:
@@ -54,8 +92,6 @@ def generate_script(topic: str, guidance: str | None = None) -> dict:
     Returns a dict with keys: title, description, tags,
     thumbnail_text, thumbnail_subtext, segments.
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     guidance_block = ""
     if guidance:
         guidance_block = f"""
@@ -92,14 +128,15 @@ For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins s
 For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
     logger.info("Generating script for topic: %s", topic)
-    msg = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=3000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    msg = _call_claude(CLAUDE_MODEL, 3000, [{"role": "user", "content": prompt}])
     raw = msg.content[0].text
     script = _extract_json(raw)
-    logger.info("Script generated: %d segments", len(script.get("segments", [])))
+    script["_usage"] = {
+        "input_tokens": msg.usage.input_tokens,
+        "output_tokens": msg.usage.output_tokens,
+        "cost_usd": _calc_cost(CLAUDE_MODEL, msg.usage),
+    }
+    logger.info("Script generated: %d segments (cost $%.4f)", len(script.get("segments", [])), script["_usage"]["cost_usd"])
     return script
 
 
@@ -119,8 +156,6 @@ def script_text_to_segments(script_text: str, topic: str, seo_override: dict | N
         Same dict shape as generate_script(): title, description, tags,
         thumbnail_text, thumbnail_subtext, segments.
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     prompt = f"""Convert this YouTube script into pipeline segments.
 Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {CHANNEL_LANGUAGE}
 Topic: "{topic}"
@@ -150,13 +185,15 @@ For visual_keyword: be specific — e.g. 'mosque interior golden dome', 'soldier
 For visual_keyword_fallback: 1-2 word broad fallback if specific term has no results."""
 
     logger.info("Converting dashboard script to segments for topic: %s", topic)
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",  # cheap — just formatting, not writing
-        max_tokens=3000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    _convert_model = "claude-haiku-4-5-20251001"
+    msg = _call_claude(_convert_model, 3000, [{"role": "user", "content": prompt}])
     raw = msg.content[0].text
     result = _extract_json(raw)
+    result["_usage"] = {
+        "input_tokens": msg.usage.input_tokens,
+        "output_tokens": msg.usage.output_tokens,
+        "cost_usd": _calc_cost(_convert_model, msg.usage),
+    }
 
     # Apply SEO overrides if provided
     if seo_override:
@@ -176,19 +213,13 @@ def generate_topic_ideas(count: int = 10) -> list[str]:
 
     Returns a list of topic strings.
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     prompt = f"""Generate {count} trending YouTube topics for a {CHANNEL_NICHE} channel.
 Audience: {CHANNEL_AUDIENCE}. Language: {CHANNEL_LANGUAGE}.
 Return ONLY a JSON array of strings. Mix Hinglish and English.
 Make them clickable and searchable."""
 
     logger.info("Generating %d topic ideas", count)
-    msg = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    msg = _call_claude(CLAUDE_MODEL, 1000, [{"role": "user", "content": prompt}])
     raw = msg.content[0].text
     ideas = json.loads(raw[raw.index("[") : raw.rindex("]") + 1])
     logger.info("Generated %d topic ideas", len(ideas))
