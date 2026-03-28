@@ -70,6 +70,7 @@ OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
 # ── Model & API Constants ─────────────────────────────────────────────────────
 CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 YOUTUBE_SCOPES: list[str] = [
+    "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
 ]
