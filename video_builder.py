@@ -7,11 +7,10 @@ background music mixing, and branded intro/outro sequences.
 
 import logging
 import os
-import re
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from moviepy.editor import (
     AudioFileClip,
     ColorClip,
@@ -30,6 +29,13 @@ from config import (
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
     OUTRO_DURATION,
+)
+from core.text_renderer import (
+    draw_caption_on_frame as _draw_caption_impl,
+    get_font as _get_font,
+    render_caption_overlay as _render_caption_overlay_impl,
+    slugify as _slugify,
+    wrap_text as _wrap_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,114 +63,17 @@ _CAPTION_FONT_SIZE = 55
 _CAPTION_STROKE_WIDTH = 3
 
 
-def _slugify(text: str) -> str:
-    """Convert a title to a safe filename slug (max 60 chars)."""
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text)
-    text = re.sub(r"-+", "-", text)
-    return text[:60].strip("-") or "video"
-
-# ── Font discovery (no ImageMagick needed) ────────────────────────────────────
-_FONT_CANDIDATES = [
-    "/System/Library/Fonts/Helvetica.ttc",          # macOS
-    "/System/Library/Fonts/Arial.ttf",              # macOS
-    "/Library/Fonts/Arial Unicode.ttf",             # macOS
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux/Docker
-    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
-
-
-def _get_font(size: int = _CAPTION_FONT_SIZE) -> ImageFont.FreeTypeFont:
-    for path in _FONT_CANDIDATES:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    """Word-wrap text to fit within max_width pixels."""
-    dummy = Image.new("RGB", (1, 1))
-    draw = ImageDraw.Draw(dummy)
-    words = text.split()
-    lines, current = [], ""
-    for word in words:
-        candidate = (current + " " + word).strip()
-        w = draw.textbbox((0, 0), candidate, font=font)[2]
-        if w > max_width and current:
-            lines.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(current)
-    return lines
-
-
 def _draw_caption(frame: np.ndarray, caption: str) -> np.ndarray:
-    """Draw white+stroke caption text on a numpy video frame using PIL.
-
-    NOTE: This is only used for one-off rendering (intro/outro).
-    For segment captions, use _render_caption_overlay() + CompositeVideoClip instead.
-    """
-    font = _get_font(_CAPTION_FONT_SIZE)
-    lines = _wrap_text(caption, font, max_width=1700)
-
-    img = Image.fromarray(frame)
-    draw = ImageDraw.Draw(img)
-
-    line_height = _CAPTION_FONT_SIZE + 12
-    total_height = len(lines) * line_height
-    y = int(_VIDEO_HEIGHT * 0.82) - total_height // 2
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = (_VIDEO_WIDTH - text_w) // 2
-        sw = _CAPTION_STROKE_WIDTH
-        for dx in range(-sw, sw + 1):
-            for dy in range(-sw, sw + 1):
-                if dx != 0 or dy != 0:
-                    draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 255))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-        y += line_height
-
-    return np.array(img)
+    """Draw white+stroke caption text on a video frame (intro/outro only)."""
+    return _draw_caption_impl(frame, caption, _VIDEO_WIDTH, _VIDEO_HEIGHT,
+                              _CAPTION_FONT_SIZE, _CAPTION_STROKE_WIDTH)
 
 
 def _render_caption_overlay(caption: str, width: int = _VIDEO_WIDTH,
                             height: int = _VIDEO_HEIGHT) -> np.ndarray:
-    """Pre-render caption text as a transparent RGBA overlay (rendered ONCE per clip).
-
-    Returns a numpy array (H, W, 4) suitable for ImageClip(transparent=True).
-    This eliminates the per-frame PIL text draw that was the #1 performance bottleneck.
-    """
-    font = _get_font(_CAPTION_FONT_SIZE)
-    lines = _wrap_text(caption, font, max_width=width - 220)
-
-    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    line_height = _CAPTION_FONT_SIZE + 12
-    total_height = len(lines) * line_height
-    y = int(height * 0.82) - total_height // 2
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = (width - text_w) // 2
-        sw = _CAPTION_STROKE_WIDTH
-        for dx in range(-sw, sw + 1):
-            for dy in range(-sw, sw + 1):
-                if dx != 0 or dy != 0:
-                    draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 220))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-        y += line_height
-
-    return np.array(img)
+    """Pre-render caption as RGBA overlay (once per clip)."""
+    return _render_caption_overlay_impl(caption, width, height,
+                                        _CAPTION_FONT_SIZE, _CAPTION_STROKE_WIDTH)
 
 
 # ── Ken Burns zoom ────────────────────────────────────────────────────────────

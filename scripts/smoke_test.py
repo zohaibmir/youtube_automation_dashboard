@@ -1,5 +1,9 @@
 """smoke_test.py — Verify all module imports and core DB functionality."""
+import os
 import sys
+
+# Ensure the project root is on Python's path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 errors = []
 
@@ -31,6 +35,11 @@ check("visual_fetcher",    lambda: __import__("visual_fetcher"))
 check("video_builder",     lambda: __import__("video_builder"))
 check("thumbnail",         lambda: __import__("thumbnail"))
 check("youtube_uploader",  lambda: __import__("youtube_uploader"))
+check("social_uploader",   lambda: __import__("social_uploader"))
+
+# ── Core package ──────────────────────────────────────────────
+check("core.text_renderer", lambda: __import__("core.text_renderer"))
+check("core.tts_providers", lambda: __import__("core.tts_providers"))
 
 def test_topic_queue():
     from database import init_db

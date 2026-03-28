@@ -6,11 +6,10 @@ and produce 1–3 vertical (1080×1920) clips under 60 seconds.
 
 import logging
 import os
-import re
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from moviepy.editor import (
     AudioFileClip,
     CompositeAudioClip,
@@ -21,6 +20,7 @@ from moviepy.editor import (
 )
 
 from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, OUTPUT_DIR
+from core.text_renderer import render_caption_overlay, slugify as _slugify
 
 logger = logging.getLogger(__name__)
 
@@ -32,81 +32,17 @@ _MAX_DURATION = 59  # YT Shorts limit
 _CAPTION_FONT_SIZE = 60
 _CAPTION_STROKE = 3
 
-# ── Font discovery ────────────────────────────────────────────────────────────
-_FONT_PATHS = [
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/System/Library/Fonts/Arial.ttf",
-    "/Library/Fonts/Arial Unicode.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
-
-
-def _get_font(size: int = _CAPTION_FONT_SIZE) -> ImageFont.FreeTypeFont:
-    for path in _FONT_PATHS:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def _slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text)
-    return text[:50].strip("-") or "short"
-
-
-# ── Caption drawing (vertical layout — centred, bottom 30%) ──────────────────
-
-def _wrap_text(text: str, font, max_width: int) -> list[str]:
-    dummy = Image.new("RGB", (1, 1))
-    draw = ImageDraw.Draw(dummy)
-    words = text.split()
-    lines, current = [], ""
-    for word in words:
-        candidate = (current + " " + word).strip()
-        w = draw.textbbox((0, 0), candidate, font=font)[2]
-        if w > max_width and current:
-            lines.append(current)
-            current = word
-        else:
-            current = candidate
-    if current:
-        lines.append(current)
-    return lines
-
+# ── Caption overlay (delegates to shared renderer) ────────────────────────────
 
 def _render_caption_overlay(caption: str) -> np.ndarray:
-    """Pre-render caption as transparent RGBA overlay (rendered ONCE per clip).
-
-    Eliminates per-frame PIL text drawing — the #1 performance bottleneck.
-    """
-    font = _get_font(_CAPTION_FONT_SIZE)
-    lines = _wrap_text(caption, font, max_width=_WIDTH - 80)
-
-    img = Image.new("RGBA", (_WIDTH, _HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-
-    line_h = _CAPTION_FONT_SIZE + 14
-    total_h = len(lines) * line_h
-    y = int(_HEIGHT * 0.72) - total_h // 2
-
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        tw = bbox[2] - bbox[0]
-        x = (_WIDTH - tw) // 2
-        sw = _CAPTION_STROKE
-        for dx in range(-sw, sw + 1):
-            for dy in range(-sw, sw + 1):
-                if dx or dy:
-                    draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 220))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-        y += line_h
-
-    return np.array(img)
+    """Pre-render caption as transparent RGBA overlay for Shorts format."""
+    return render_caption_overlay(
+        caption, _WIDTH, _HEIGHT,
+        font_size=_CAPTION_FONT_SIZE,
+        stroke_width=_CAPTION_STROKE,
+        y_position=0.72,
+        margin=80,
+    )
 
 
 # ── Segment selection ─────────────────────────────────────────────────────────
