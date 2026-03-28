@@ -30,7 +30,7 @@ OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "output")
 # ── YouTube Publish Settings ─────────────────────────────────────────────────
 # Exported by the HTML dashboard → Settings → Export .env file
 DEFAULT_VISIBILITY: str = os.getenv("DEFAULT_VISIBILITY", "public")   # public | unlisted | private
-YOUTUBE_CATEGORY_ID: str = os.getenv("YOUTUBE_CATEGORY_ID", "22")      # 22=People&Blogs
+YOUTUBE_CATEGORY_ID: str = os.getenv("YOUTUBE_CATEGORY_ID", "25")      # 25=News&Politics
 
 # ── Voice / TTS ──────────────────────────────────────────────────────────────
 # TTS provider priority: elevenlabs | edge | gtts
