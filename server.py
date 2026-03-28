@@ -247,6 +247,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channels_get()
         elif path == "/api/social/platforms":
             self._handle_social_platforms_get()
+        elif path == "/api/branding/assets":
+            self._handle_branding_assets_get()
+        elif path == "/api/channel/audit":
+            self._handle_channel_audit()
+        elif path == "/api/studio/videos":
+            self._handle_studio_videos_get()
+        elif path.startswith("/api/studio/info/"):
+            self._handle_studio_video_info(path)
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -280,6 +288,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_social_config_post()
         elif path == "/api/social/upload":
             self._handle_social_upload()
+        elif path == "/api/branding/generate":
+            self._handle_branding_generate()
+        elif path == "/api/branding/upload-banner":
+            self._handle_branding_upload_banner()
+        elif path == "/api/branding/set-trailer":
+            self._handle_branding_set_trailer()
+        elif path == "/api/channel/update":
+            self._handle_channel_update()
+        elif path == "/api/channel/fix-video":
+            self._handle_channel_fix_video()
+        elif path == "/api/channel/fix-all":
+            self._handle_channel_fix_all()
+        elif path == "/api/studio/extract-clips":
+            self._handle_studio_extract_clips()
+        elif path == "/api/studio/upload-main":
+            self._handle_studio_upload_main()
+        elif path == "/api/studio/upload-clips":
+            self._handle_studio_upload_clips()
+        elif path == "/api/community-post/generate":
+            self._handle_community_post_generate()
         else:
             self.send_response(404)
             self.end_headers()
@@ -547,6 +575,223 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_response(403); self.end_headers(); return
         from social_uploader import list_platforms
         self._json_response(list_platforms())
+
+    # ── Branding endpoints ─────────────────────────────────────────────────
+
+    def _handle_branding_assets_get(self) -> None:
+        """GET /api/branding/assets — List existing branding files."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        from branding_manager import list_assets
+        self._json_response({"ok": True, "assets": list_assets()})
+
+    def _handle_branding_generate(self) -> None:
+        """POST /api/branding/generate — Generate banner, avatar, watermark."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            channel_name = data.get("channelName", "TRUTH THAT NEVER SHARED")
+            tagline = data.get("tagline", "Geopolitics  •  Hidden History  •  Global Crisis Analysis")
+            from branding_manager import generate_assets
+            paths = generate_assets(channel_name=channel_name, tagline=tagline)
+            from branding_manager import list_assets
+            self._json_response({"ok": True, "assets": list_assets()})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_branding_upload_banner(self) -> None:
+        """POST /api/branding/upload-banner — Upload banner to YouTube."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            channel_slug = data.get("channel") or None
+            from branding_manager import upload_banner_to_youtube
+            result = upload_banner_to_youtube(channel_slug)
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_branding_set_trailer(self) -> None:
+        """POST /api/branding/set-trailer — Set channel trailer video."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_id = data.get("videoId", "").strip()
+            channel_slug = data.get("channel") or None
+            from branding_manager import set_channel_trailer
+            result = set_channel_trailer(video_id, channel_slug)
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    # ── Channel Health endpoints ───────────────────────────────────────────
+
+    def _handle_channel_audit(self) -> None:
+        """GET /api/channel/audit — Full channel SEO audit."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            from channel_manager import audit_channel
+            result = audit_channel()
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_update(self) -> None:
+        """POST /api/channel/update — Update channel description/keywords/etc."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            from channel_manager import update_channel_info
+            result = update_channel_info(
+                description=data.get("description"),
+                keywords=data.get("keywords"),
+                country=data.get("country"),
+                language=data.get("language"),
+                trailer_video_id=data.get("trailerVideoId"),
+                channel_slug=data.get("channel"),
+            )
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_fix_video(self) -> None:
+        """POST /api/channel/fix-video — Fix a single video's SEO."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_id = data.get("videoId", "").strip()
+            if not video_id:
+                self._json_response({"ok": False, "error": "videoId required"})
+                return
+            from channel_manager import fix_video
+            result = fix_video(video_id, data.get("channel"))
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_fix_all(self) -> None:
+        """POST /api/channel/fix-all — Fix all videos with issues."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            from channel_manager import fix_all_videos
+            result = fix_all_videos()
+            self._json_response(result)
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    # ── Upload Studio endpoints ─────────────────────────────────────────
+
+    def _handle_studio_videos_get(self) -> None:
+        """GET /api/studio/videos — List video files in output/."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        from media_hub import list_videos
+        self._json_response(list_videos())
+
+    def _handle_studio_video_info(self, path: str) -> None:
+        """GET /api/studio/info/<encoded_path> — Probe video metadata."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        import urllib.parse
+        video_path = urllib.parse.unquote(path.replace("/api/studio/info/", "", 1))
+        from media_hub import video_info
+        self._json_response(video_info(video_path))
+
+    def _handle_studio_extract_clips(self) -> None:
+        """POST /api/studio/extract-clips — Extract time-range clips from a video."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_path = data.get("video_path", "")
+            clips = data.get("clips", [])
+            if not video_path or not clips:
+                self._json_response({"ok": False, "error": "video_path and clips[] required"})
+                return
+            from media_hub import extract_clips
+            self._json_response(extract_clips(video_path, clips))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_studio_upload_main(self) -> None:
+        """POST /api/studio/upload-main — Upload existing video to YouTube."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_path = data.get("video_path", "")
+            content = {
+                "title": data.get("title", ""),
+                "description": data.get("description", ""),
+                "tags": data.get("tags", []),
+            }
+            channel = data.get("channel") or None
+            if not video_path or not content["title"]:
+                self._json_response({"ok": False, "error": "video_path and title required"})
+                return
+            from media_hub import upload_main_video
+            self._json_response(upload_main_video(video_path, content, channel))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_studio_upload_clips(self) -> None:
+        """POST /api/studio/upload-clips — Upload clips to YouTube Shorts + social."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            clip_paths = data.get("clip_paths", [])
+            content = {
+                "title": data.get("title", ""),
+                "description": data.get("description", ""),
+                "tags": data.get("tags", []),
+            }
+            if not clip_paths:
+                self._json_response({"ok": False, "error": "clip_paths[] required"})
+                return
+            from media_hub import upload_clips_to_platforms
+            self._json_response(upload_clips_to_platforms(
+                clip_paths, content,
+                channel_slug=data.get("channel"),
+                youtube_shorts=data.get("youtube_shorts", True),
+                social_platforms=data.get("social_platforms", True),
+            ))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_community_post_generate(self) -> None:
+        """POST /api/community-post/generate — AI-generate a community post draft."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            title = data.get("title", "")
+            desc = data.get("description", "")
+            tags = data.get("tags", [])
+            api_key = data.get("api_key", "")
+            if not title:
+                self._json_response({"ok": False, "error": "title required"})
+                return
+            from community_post import generate_post
+            self._json_response(generate_post(title, desc, tags, api_key or None))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
 
     def _handle_social_config_post(self) -> None:
         """POST /api/social/config — Save platform credentials.

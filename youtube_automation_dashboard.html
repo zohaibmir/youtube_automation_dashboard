@@ -201,6 +201,11 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('costs',this)"><span class="nav-icon">&#128176;</span>Cost &amp; Revenue</button>
   <button class="nav-item" onclick="navTo('youtube',this)"><span class="nav-icon">&#9654;</span>YouTube</button>
   <div class="nav-divider"></div>
+  <div class="nav-section">Channel</div>
+  <button class="nav-item" onclick="navTo('studio',this)"><span class="nav-icon">&#128249;</span>Upload Studio</button>
+  <button class="nav-item" onclick="navTo('branding',this)"><span class="nav-icon">&#127912;</span>Branding</button>
+  <button class="nav-item" onclick="navTo('health',this)"><span class="nav-icon">&#128138;</span>Channel Health</button>
+  <div class="nav-divider"></div>
   <div class="nav-section">Setup</div>
   <button class="nav-item" onclick="navTo('pipeline',this)"><span class="nav-icon">&#9881;&#65039;</span>Pipeline Code</button>
   <button class="nav-item" onclick="navTo('settings',this)"><span class="nav-icon">&#127917;</span>Settings</button>
@@ -990,6 +995,256 @@ canvas{display:block;width:100%;height:auto}
   </details>
 </div>
 
+</div>
+
+<!-- ===== UPLOAD STUDIO ===== -->
+<div id="panel-studio" class="panel">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="font-size:22px">&#128249;</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--text)">Upload Studio</div>
+      <div style="font-size:11px;color:var(--muted)">Upload existing videos, extract clips for Shorts/Reels, publish to all platforms</div>
+    </div>
+  </div>
+
+  <!-- Video picker -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">1. Select Video</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div class="info-box" style="margin-bottom:10px">Pick a video from your <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/</code> directory, or enter a custom path.</div>
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
+      <div style="flex:1;min-width:200px">
+        <label>Video File</label>
+        <select id="stu-video-select" onchange="studioVideoChanged()" style="margin-bottom:0"><option value="">Loading…</option></select>
+      </div>
+      <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="loadStudioVideos()">&#128260; Refresh</button>
+    </div>
+    <div id="stu-video-info" style="display:none;padding:10px;background:var(--bg3);border-radius:8px;margin-top:6px">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text)">
+        <span>&#128337; <strong id="stu-v-dur">—</strong></span>
+        <span>&#128438; <strong id="stu-v-res">—</strong></span>
+        <span>&#127910; <strong id="stu-v-codec">—</strong></span>
+        <span>&#128190; <strong id="stu-v-size">—</strong> MB</span>
+        <span>&#127916; <strong id="stu-v-fps">—</strong> fps</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload as main video -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">2. Upload to YouTube (Main Video)</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div class="grid2" style="margin-bottom:10px">
+      <div>
+        <label>Title</label>
+        <input type="text" id="stu-main-title" placeholder="Video title" oninput="markDirty()"/>
+      </div>
+      <div>
+        <label>Channel</label>
+        <select id="stu-channel" style="margin-bottom:0"><option value="">Default</option></select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label>Description</label>
+      <textarea id="stu-main-desc" rows="3" style="font-size:11px" placeholder="Video description"></textarea>
+    </div>
+    <div style="margin-bottom:10px">
+      <label>Tags (comma-separated)</label>
+      <input type="text" id="stu-main-tags" placeholder="tag1, tag2, tag3" oninput="markDirty()"/>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-green" onclick="studioUploadMain()" id="stu-upload-main-btn">&#128228; Upload to YouTube</button>
+      <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="studioGeneratePost()" id="stu-post-btn">&#128172; Generate Community Post</button>
+    </div>
+    <div id="stu-upload-main-status" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+  </div>
+
+  <!-- Community Post Draft -->
+  <div id="stu-post-section" style="display:none">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Community Post Draft</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div class="info-box" style="margin-bottom:8px">YouTube API doesn't support community post creation. Copy this text and paste in YouTube Studio &gt; Community.</div>
+      <textarea id="stu-post-text" rows="5" style="font-size:12px;line-height:1.6;margin-bottom:8px" readonly></textarea>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm" onclick="copyPostToClipboard()">&#128203; Copy to Clipboard</button>
+        <span id="stu-post-source" style="font-size:10px;color:var(--dim)"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clip extraction -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">3. Extract Clips for Shorts / Reels</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div class="info-box" style="margin-bottom:10px">Define time ranges to extract clips. Each clip can be uploaded as a YouTube Short and/or social media Reel. Max 59s for Shorts, 90s for Reels.</div>
+
+    <div id="stu-clips-list" style="margin-bottom:10px">
+      <!-- clip rows added dynamically -->
+    </div>
+    <button class="btn btn-sm" onclick="studioAddClipRow()" style="margin-bottom:10px">&#10010; Add Clip</button>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="studioExtractClips()" id="stu-extract-btn">&#9986; Extract Clips</button>
+    </div>
+    <div id="stu-extract-status" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+  </div>
+
+  <!-- Extracted clips + upload -->
+  <div id="stu-extracted-section" style="display:none">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">4. Upload Clips</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div id="stu-extracted-list" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <label style="font-size:11px;display:flex;align-items:center;gap:4px;margin:0">
+          <input type="checkbox" id="stu-yt-shorts" checked/> YouTube Shorts
+        </label>
+        <label style="font-size:11px;display:flex;align-items:center;gap:4px;margin:0">
+          <input type="checkbox" id="stu-social" checked/> Social Platforms (IG, FB, TikTok)
+        </label>
+      </div>
+      <button class="btn btn-green" onclick="studioUploadClips()" id="stu-upload-clips-btn">&#128640; Upload All Clips</button>
+      <div id="stu-upload-clips-status" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== BRANDING ===== -->
+<div id="panel-branding" class="panel">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="font-size:22px">&#127912;</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--text)">Channel Branding</div>
+      <div style="font-size:11px;color:var(--muted)">Generate and upload banner, avatar, and watermark for your YouTube channel</div>
+    </div>
+  </div>
+
+  <!-- Generate Section -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Generate Assets</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div class="info-box" style="margin-bottom:10px">Customize your channel name and tagline, then generate professional branding assets with one click.</div>
+    <div class="grid2" style="margin-bottom:10px">
+      <div>
+        <label>Channel Name</label>
+        <input type="text" id="brand-channel-name" placeholder="TRUTH THAT NEVER SHARED" value="TRUTH THAT NEVER SHARED" oninput="markDirty()"/>
+      </div>
+      <div>
+        <label>Tagline</label>
+        <input type="text" id="brand-tagline" placeholder="Geopolitics • Hidden History • Global Crisis Analysis" value="Geopolitics  •  Hidden History  •  Global Crisis Analysis" oninput="markDirty()"/>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="brand-generate-btn" onclick="generateBranding()">
+      <span id="brand-gen-icon">&#127912;</span> Generate Banner + Avatar + Watermark
+    </button>
+    <div id="brand-gen-status" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+  </div>
+
+  <!-- Preview Section -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Asset Preview</div>
+  <div id="brand-assets-container" style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:14px">
+    <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px" id="brand-loading">Loading assets…</div>
+  </div>
+
+  <!-- Upload Actions -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Upload to YouTube</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-green btn-sm" onclick="uploadBannerToYT()" id="brand-upload-banner-btn">&#128228; Upload Banner to YouTube</button>
+      <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="setChannelTrailer()" id="brand-trailer-btn">&#127910; Set Channel Trailer</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:8px">
+      <div style="flex:1;min-width:200px">
+        <label>Trailer Video ID</label>
+        <input type="text" id="brand-trailer-id" placeholder="e.g. wpihxo7K0hE" style="margin-bottom:0"/>
+      </div>
+    </div>
+    <div id="brand-upload-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+
+    <div style="margin-top:12px;padding:9px 11px;background:rgba(247,194,78,0.07);border:1px solid rgba(247,194,78,0.2);border-radius:7px;font-size:11px;color:var(--muted);line-height:1.65">
+      <strong style="color:var(--amber)">Manual steps:</strong><br>
+      &bull; <strong>Avatar:</strong> Upload <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">branding/channel_avatar.png</code> in YouTube Studio &gt; Customization &gt; Branding &gt; Picture<br>
+      &bull; <strong>Watermark:</strong> Upload <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">branding/watermark.png</code> in YouTube Studio &gt; Customization &gt; Branding &gt; Video watermark<br>
+      <span style="font-size:10px;color:var(--dim)">YouTube API doesn't support avatar or watermark upload — these must be done in Studio.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CHANNEL HEALTH ===== -->
+<div id="panel-health" class="panel">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="font-size:22px">&#128138;</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--text)">Channel Health</div>
+      <div style="font-size:11px;color:var(--muted)">SEO audit, video status, playlists, and channel-level optimizations</div>
+    </div>
+  </div>
+
+  <!-- Health Score -->
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:36px;font-weight:900;color:var(--green)" id="health-score">—</div>
+      <div style="font-size:11px;color:var(--muted)">Health Score</div>
+      <div style="height:6px;background:var(--bg4);border-radius:3px;margin-top:8px;overflow:hidden">
+        <div id="health-score-bar" style="height:100%;width:0%;background:var(--green);border-radius:3px;transition:width 0.5s"></div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:var(--text)" id="health-videos">—</div>
+      <div style="font-size:11px;color:var(--muted)">Videos</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:var(--text)" id="health-views">—</div>
+      <div style="font-size:11px;color:var(--muted)">Total Views</div>
+    </div>
+    <div style="flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:24px;font-weight:800;color:var(--red)" id="health-issues">—</div>
+      <div style="font-size:11px;color:var(--muted)">Issues Found</div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="runChannelAudit()" id="health-audit-btn" style="margin-bottom:14px">
+    <span id="health-audit-icon">&#128138;</span> Run Full Audit
+  </button>
+  <button class="btn btn-danger btn-sm" onclick="fixAllVideos()" id="health-fixall-btn" style="margin-bottom:14px;display:none">
+    &#128295; Fix All Issues
+  </button>
+
+  <!-- Channel Info -->
+  <div id="health-channel-section" style="display:none">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Channel Settings</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div id="health-channel-issues" style="margin-bottom:10px"></div>
+      <div class="grid2" style="margin-bottom:10px">
+        <div>
+          <label>Channel Description <span id="health-desc-len" style="font-weight:400;color:var(--dim)"></span></label>
+          <textarea id="health-desc" rows="4" style="font-size:11px"></textarea>
+        </div>
+        <div>
+          <label>Channel Keywords</label>
+          <textarea id="health-keywords" rows="4" style="font-size:11px" placeholder='"keyword one" "keyword two"'></textarea>
+        </div>
+      </div>
+      <div class="grid2" style="margin-bottom:10px">
+        <div>
+          <label>Country</label>
+          <input type="text" id="health-country" placeholder="e.g. PK" maxlength="2" style="margin-bottom:0"/>
+        </div>
+        <div>
+          <label>Default Language</label>
+          <input type="text" id="health-language" placeholder="e.g. en" maxlength="5" style="margin-bottom:0"/>
+        </div>
+      </div>
+      <button class="btn btn-green btn-sm" onclick="saveChannelInfo()">&#128190; Save Channel Info</button>
+      <span id="health-save-status" style="font-size:11px;color:var(--muted);margin-left:8px"></span>
+    </div>
+
+    <!-- Video List -->
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">
+      Video Audit <span id="health-video-count" style="color:var(--accent)"></span>
+    </div>
+    <div id="health-videos-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+
+    <!-- Playlists -->
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Playlists</div>
+    <div id="health-playlists" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px"></div>
+  </div>
 </div>
 
 <!-- ===== PIPELINE CODE ===== -->
@@ -2160,6 +2415,9 @@ function navTo(name,el){
   var p=document.getElementById('panel-'+name);if(p)p.classList.add('active');
   if(el)el.classList.add('active');
   updatePipelineBar();
+  if(name==='studio')   loadStudioVideos();
+  if(name==='branding') loadBrandingAssets();
+  if(name==='health')   runChannelAudit();
 }
 var _pipelineOrder=['trending','script','seo','thumbnail','queue'];
 
@@ -3970,6 +4228,33 @@ function _plShowPreview(d){
     var el=document.getElementById(id);if(el)el.className='pl-step done';
   });
   _updatePipelineSocialSection(); // show social upload options if platforms configured
+
+  // Auto-generate community post draft if setting enabled
+  if(document.getElementById('pl-post-check')&&document.getElementById('pl-post-check').checked){
+    _plGenerateCommunityPost(d.title||'');
+  }
+}
+
+function _plGenerateCommunityPost(title){
+  var apiKey=(document.getElementById('key-anthropic')||{}).value||'';
+  fetch('/api/community-post/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    title:title,description:'',tags:[],api_key:apiKey
+  })}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok&&d.post){
+      var box=document.getElementById('pl-post-draft');
+      if(!box){
+        box=document.createElement('div');box.id='pl-post-draft';
+        box.style.cssText='margin-top:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+        var parent=document.getElementById('pl-preview-section');
+        if(parent)parent.appendChild(box);
+      }
+      box.innerHTML='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Community Post Draft</div>'+
+        '<textarea readonly style="width:100%;font-size:11px;line-height:1.5;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);resize:vertical" rows="4" id="pl-post-text">'+_escHtml(d.post)+'</textarea>'+
+        '<button class="btn btn-sm" style="margin-top:6px" id="pl-post-copy-btn">&#128203; Copy</button>'+
+        '<span style="font-size:10px;color:var(--dim);margin-left:8px">Paste in YouTube Studio &gt; Community</span>';
+      document.getElementById('pl-post-copy-btn').onclick=function(){var t=document.getElementById('pl-post-text');t.select();navigator.clipboard.writeText(t.value);};
+    }
+  }).catch(function(){});
 }
 
 function _plShowDone(ytUrl){
@@ -4015,6 +4300,407 @@ function cancelPipeline(){
   fetch('/api/pipeline/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
   _plStatus='idle';
   document.getElementById('pl-modal').style.display='none';
+}
+
+// ===== UPLOAD STUDIO =====
+var _studioVideos=[];
+var _studioInfo=null;
+var _studioClipPaths=[];
+var _studioClipCount=0;
+
+function loadStudioVideos(){
+  var sel=document.getElementById('stu-video-select');
+  sel.innerHTML='<option value="">Loading\u2026</option>';
+  fetch('/api/studio/videos').then(function(r){return r.json();}).then(function(d){
+    _studioVideos=d.videos||[];
+    var html='<option value="">\u2014 Select a video \u2014</option>';
+    _studioVideos.forEach(function(v){
+      html+='<option value="'+_escHtml(v.path)+'">'+_escHtml(v.name)+' ('+v.size_mb+' MB)</option>';
+    });
+    sel.innerHTML=html;
+    // Also populate channel dropdown
+    _loadStudioChannels();
+  }).catch(function(e){
+    sel.innerHTML='<option value="">Error loading videos</option>';
+  });
+}
+
+function _loadStudioChannels(){
+  fetch('/api/channels').then(function(r){return r.json();}).then(function(list){
+    var sel=document.getElementById('stu-channel');
+    var html='<option value="">Default</option>';
+    (list||[]).forEach(function(ch){
+      html+='<option value="'+_escHtml(ch.slug)+'"'+(ch.is_default?' selected':'')+'>'+_escHtml(ch.name)+'</option>';
+    });
+    sel.innerHTML=html;
+  }).catch(function(){});
+}
+
+function studioVideoChanged(){
+  var path=document.getElementById('stu-video-select').value;
+  var info=document.getElementById('stu-video-info');
+  _studioInfo=null;
+  if(!path){info.style.display='none';return;}
+  info.style.display='block';
+  document.getElementById('stu-v-dur').textContent='\u2026';
+  fetch('/api/studio/info/'+encodeURIComponent(path)).then(function(r){return r.json();}).then(function(d){
+    if(!d.ok){info.style.display='none';return;}
+    _studioInfo=d;
+    document.getElementById('stu-v-dur').textContent=d.duration_str||'?';
+    document.getElementById('stu-v-res').textContent=d.width+'\u00d7'+d.height;
+    document.getElementById('stu-v-codec').textContent=d.codec;
+    document.getElementById('stu-v-size').textContent=d.size_mb;
+    document.getElementById('stu-v-fps').textContent=d.fps;
+    // Prefill title from filename
+    if(!document.getElementById('stu-main-title').value){
+      var name=d.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
+      document.getElementById('stu-main-title').value=name;
+    }
+    // Add a default clip row if none exist
+    if(_studioClipCount===0) studioAddClipRow();
+  }).catch(function(){info.style.display='none';});
+}
+
+function studioAddClipRow(){
+  var i=_studioClipCount++;
+  var maxDur=_studioInfo?_studioInfo.duration:999;
+  var sugEnd=Math.min(59,maxDur);
+  var container=document.getElementById('stu-clips-list');
+  var row=document.createElement('div');
+  row.id='stu-clip-row-'+i;
+  row.style.cssText='display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:6px;padding:8px;background:var(--bg3);border-radius:6px';
+  row.innerHTML=
+    '<div style="flex:1;min-width:100px"><label style="font-size:10px">Label</label><input type="text" id="stu-clip-label-'+i+'" value="clip-'+(i+1)+'" style="margin:0;font-size:11px"/></div>'+
+    '<div style="width:80px"><label style="font-size:10px">Start (s)</label><input type="number" id="stu-clip-start-'+i+'" value="0" min="0" max="'+maxDur+'" step="0.5" style="margin:0;font-size:11px"/></div>'+
+    '<div style="width:80px"><label style="font-size:10px">End (s)</label><input type="number" id="stu-clip-end-'+i+'" value="'+sugEnd+'" min="0" max="'+maxDur+'" step="0.5" style="margin:0;font-size:11px"/></div>'+
+    '<div style="width:50px"><label style="font-size:10px">Dur</label><div style="font-size:11px;padding:6px 0" id="stu-clip-dur-'+i+'">'+sugEnd+'s</div></div>'+
+    '<button class="btn btn-sm" style="background:var(--red);color:#fff;padding:3px 6px" onclick="this.parentNode.remove()">&times;</button>';
+  container.appendChild(row);
+  // Duration auto-calc
+  ['start','end'].forEach(function(f){
+    document.getElementById('stu-clip-'+f+'-'+i).addEventListener('input',function(){
+      var s=parseFloat(document.getElementById('stu-clip-start-'+i).value)||0;
+      var e=parseFloat(document.getElementById('stu-clip-end-'+i).value)||0;
+      document.getElementById('stu-clip-dur-'+i).textContent=Math.max(0,e-s).toFixed(1)+'s';
+    });
+  });
+}
+
+function _gatherClipRows(){
+  var clips=[];
+  document.querySelectorAll('[id^="stu-clip-row-"]').forEach(function(row){
+    var idx=row.id.replace('stu-clip-row-','');
+    clips.push({
+      label:document.getElementById('stu-clip-label-'+idx).value.trim()||'clip',
+      start:parseFloat(document.getElementById('stu-clip-start-'+idx).value)||0,
+      end:parseFloat(document.getElementById('stu-clip-end-'+idx).value)||60,
+    });
+  });
+  return clips;
+}
+
+function studioExtractClips(){
+  var vpath=document.getElementById('stu-video-select').value;
+  var st=document.getElementById('stu-extract-status');
+  if(!vpath){st.textContent='Select a video first';st.style.color='var(--red)';return;}
+  var clips=_gatherClipRows();
+  if(!clips.length){st.textContent='Add at least one clip';st.style.color='var(--red)';return;}
+  var btn=document.getElementById('stu-extract-btn');
+  btn.disabled=true;st.textContent='Extracting clips with FFmpeg\u2026';st.style.color='var(--muted)';
+  fetch('/api/studio/extract-clips',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({video_path:vpath,clips:clips})
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(!d.ok){st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';return;}
+    st.textContent=d.clips.length+' clip(s) extracted!';st.style.color='var(--green)';
+    _studioClipPaths=[];
+    var html='';
+    (d.clips||[]).forEach(function(c){
+      if(c.error){
+        html+='<div style="padding:6px;font-size:11px;color:var(--red)">\u2717 '+_escHtml(c.label)+': '+_escHtml(c.error)+'</div>';
+      } else {
+        _studioClipPaths.push(c.path);
+        html+='<div style="padding:6px;margin-bottom:4px;background:var(--bg3);border-radius:6px;font-size:11px;display:flex;justify-content:space-between">';
+        html+='<span style="color:var(--green)">\u2713 '+_escHtml(c.label)+'</span>';
+        html+='<span style="color:var(--dim)">'+c.duration+'s \u2022 '+c.size_mb+' MB</span></div>';
+      }
+    });
+    document.getElementById('stu-extracted-list').innerHTML=html;
+    document.getElementById('stu-extracted-section').style.display=_studioClipPaths.length?'block':'none';
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function studioUploadMain(){
+  var vpath=document.getElementById('stu-video-select').value;
+  var st=document.getElementById('stu-upload-main-status');
+  var title=document.getElementById('stu-main-title').value.trim();
+  if(!vpath){st.textContent='Select a video first';st.style.color='var(--red)';return;}
+  if(!title){st.textContent='Title is required';st.style.color='var(--red)';return;}
+  var btn=document.getElementById('stu-upload-main-btn');
+  btn.disabled=true;st.textContent='Uploading to YouTube\u2026';st.style.color='var(--muted)';
+  var tags=(document.getElementById('stu-main-tags').value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+  fetch('/api/studio/upload-main',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    video_path:vpath,
+    title:title,
+    description:document.getElementById('stu-main-desc').value.trim(),
+    tags:tags,
+    channel:document.getElementById('stu-channel').value||null
+  })}).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){st.innerHTML='\u2713 Uploaded! <a href="'+d.url+'" target="_blank" style="color:var(--accent)">'+d.url+'</a>';st.style.color='var(--green)';}
+    else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function studioUploadClips(){
+  if(!_studioClipPaths.length){alert('No clips extracted yet');return;}
+  var st=document.getElementById('stu-upload-clips-status');
+  var btn=document.getElementById('stu-upload-clips-btn');
+  btn.disabled=true;st.textContent='Uploading '+_studioClipPaths.length+' clip(s)\u2026';st.style.color='var(--muted)';
+  var tags=(document.getElementById('stu-main-tags').value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+  fetch('/api/studio/upload-clips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    clip_paths:_studioClipPaths,
+    title:document.getElementById('stu-main-title').value.trim(),
+    description:document.getElementById('stu-main-desc').value.trim(),
+    tags:tags,
+    channel:document.getElementById('stu-channel').value||null,
+    youtube_shorts:document.getElementById('stu-yt-shorts').checked,
+    social_platforms:document.getElementById('stu-social').checked
+  })}).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){
+      var r=d.results||{};
+      var ytOk=(r.youtube_shorts||[]).filter(function(x){return x.video_id;}).length;
+      var scOk=(r.social||[]).filter(function(x){return !x.error;}).length;
+      st.textContent='\u2713 Uploaded! YT Shorts: '+ytOk+', Social: '+scOk;st.style.color='var(--green)';
+    }else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function studioGeneratePost(){
+  var st=document.getElementById('stu-upload-main-status');
+  var title=document.getElementById('stu-main-title').value.trim();
+  if(!title){st.textContent='Enter a title first';st.style.color='var(--red)';return;}
+  var btn=document.getElementById('stu-post-btn');
+  btn.disabled=true;
+  var tags=(document.getElementById('stu-main-tags').value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
+  var apiKey=(document.getElementById('key-anthropic')||{}).value||'';
+  fetch('/api/community-post/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    title:title,
+    description:document.getElementById('stu-main-desc').value.trim(),
+    tags:tags,
+    api_key:apiKey
+  })}).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){
+      document.getElementById('stu-post-section').style.display='block';
+      document.getElementById('stu-post-text').value=d.post;
+      document.getElementById('stu-post-source').textContent='Source: '+(d.source==='ai'?'AI (Claude)':'Template')+(d.ai_error?' — AI fallback: '+d.ai_error:'');
+    }else{st.textContent='Post error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function copyPostToClipboard(){
+  var t=document.getElementById('stu-post-text');
+  t.select();
+  navigator.clipboard.writeText(t.value).then(function(){
+    var src=document.getElementById('stu-post-source');
+    src.textContent='\u2713 Copied!';
+    setTimeout(function(){src.textContent='';},2000);
+  });
+}
+
+// ===== BRANDING =====
+var _brandingLoaded=false;
+function loadBrandingAssets(){
+  var c=document.getElementById('brand-assets-container');
+  c.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Loading assets…</div>';
+  fetch('/api/branding/assets').then(function(r){return r.json();}).then(function(d){
+    _brandingLoaded=true;
+    if(!d.ok||!d.assets||d.assets.length===0){
+      c.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">No branding assets found. Click <b>Generate</b> to create them.</div>';
+      return;
+    }
+    var html='';
+    d.assets.forEach(function(a){
+      var isWide=a.name.indexOf('banner')!==-1;
+      html+='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;'+(isWide?'':'display:inline-block;width:calc(50% - 6px);vertical-align:top;')+'">';
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">'+_escHtml(a.name)+'</div>';
+      html+='<div style="font-size:10px;color:var(--dim);margin-bottom:6px">'+a.width+'×'+a.height+' — '+(a.size_kb||'?')+' KB</div>';
+      if(a.path){ html+='<img src="/branding/'+_escHtml(a.name)+'" style="max-width:100%;border-radius:6px;border:1px solid var(--border)" onerror="this.style.display=\'none\'"/>'; }
+      html+='</div>';
+    });
+    c.innerHTML=html;
+  }).catch(function(e){
+    c.innerHTML='<div style="color:var(--red);font-size:12px;padding:10px">Failed to load: '+_escHtml(e.message)+'</div>';
+  });
+}
+
+function generateBranding(){
+  var btn=document.getElementById('brand-generate-btn');
+  var st=document.getElementById('brand-gen-status');
+  var name=document.getElementById('brand-channel-name').value.trim();
+  var tag=document.getElementById('brand-tagline').value.trim();
+  if(!name){st.textContent='Channel name is required';st.style.color='var(--red)';return;}
+  btn.disabled=true;st.textContent='Generating…';st.style.color='var(--muted)';
+  fetch('/api/branding/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({channel_name:name,tagline:tag})
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){st.textContent='Assets generated!';st.style.color='var(--green)';loadBrandingAssets();}
+    else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function uploadBannerToYT(){
+  var btn=document.getElementById('brand-upload-banner-btn');
+  var st=document.getElementById('brand-upload-status');
+  btn.disabled=true;st.textContent='Uploading banner…';st.style.color='var(--muted)';
+  fetch('/api/branding/upload-banner',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){st.textContent='Banner uploaded to YouTube!';st.style.color='var(--green)';}
+    else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function setChannelTrailer(){
+  var vid=document.getElementById('brand-trailer-id').value.trim();
+  var st=document.getElementById('brand-upload-status');
+  if(!vid){st.textContent='Enter a video ID';st.style.color='var(--red)';return;}
+  var btn=document.getElementById('brand-trailer-btn');
+  btn.disabled=true;st.textContent='Setting trailer…';st.style.color='var(--muted)';
+  fetch('/api/branding/set-trailer',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({video_id:vid})
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;
+    if(d.ok){st.textContent='Trailer set!';st.style.color='var(--green)';}
+    else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+// ===== CHANNEL HEALTH =====
+var _auditCache=null;
+function runChannelAudit(){
+  if(_auditCache){_renderAudit(_auditCache);return;}
+  var btn=document.getElementById('health-audit-btn');
+  btn.disabled=true;document.getElementById('health-audit-icon').textContent='⏳';
+  fetch('/api/channel/audit').then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
+    if(!d.ok){alert('Audit failed: '+(d.error||'unknown'));return;}
+    _auditCache=d;
+    _renderAudit(d);
+  }).catch(function(e){btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';alert(e.message);});
+}
+
+function _renderAudit(d){
+  // Score
+  var sc=d.score||0;
+  document.getElementById('health-score').textContent=sc;
+  document.getElementById('health-score').style.color=sc>=80?'var(--green)':sc>=50?'var(--amber)':'var(--red)';
+  document.getElementById('health-score-bar').style.width=sc+'%';
+  document.getElementById('health-score-bar').style.background=sc>=80?'var(--green)':sc>=50?'var(--amber)':'var(--red)';
+
+  // Stats
+  var vids=d.videos||[];
+  var views=0;vids.forEach(function(v){views+=parseInt(v.views||0);});
+  document.getElementById('health-videos').textContent=vids.length;
+  document.getElementById('health-views').textContent=views.toLocaleString();
+  var issues=(d.channel_issues||[]).length+(d.video_issues_count||0);
+  document.getElementById('health-issues').textContent=issues;
+  document.getElementById('health-issues').style.color=issues>0?'var(--red)':'var(--green)';
+
+  // Fix-all button
+  document.getElementById('health-fixall-btn').style.display=(d.video_issues_count||0)>0?'inline-block':'none';
+
+  // Channel section
+  document.getElementById('health-channel-section').style.display='block';
+
+  // Channel issues
+  var ciHtml='';
+  (d.channel_issues||[]).forEach(function(i){
+    ciHtml+='<div style="padding:4px 8px;margin-bottom:4px;border-radius:5px;font-size:11px;background:rgba(239,68,68,0.08);color:var(--red);border:1px solid rgba(239,68,68,0.15)">⚠ '+_escHtml(i)+'</div>';
+  });
+  if(!ciHtml) ciHtml='<div style="font-size:11px;color:var(--green)">✓ No channel-level issues</div>';
+  document.getElementById('health-channel-issues').innerHTML=ciHtml;
+
+  // Channel info fields
+  var ch=d.channel||{};
+  document.getElementById('health-desc').value=ch.description||'';
+  document.getElementById('health-desc-len').textContent='('+((ch.description||'').length)+' chars)';
+  document.getElementById('health-keywords').value=(ch.keywords||[]).join(', ');
+  document.getElementById('health-country').value=ch.country||'';
+  document.getElementById('health-language').value=ch.default_language||'';
+
+  // Videos
+  document.getElementById('health-video-count').textContent='('+vids.length+')';
+  var vhtml='';
+  vids.forEach(function(v){
+    var hasIssues=(v.issues&&v.issues.length>0);
+    vhtml+='<div style="background:var(--bg2);border:1px solid '+(hasIssues?'rgba(239,68,68,0.25)':'var(--border)')+';border-radius:8px;padding:10px 12px">';
+    vhtml+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
+    vhtml+='<div>';
+    vhtml+='<div style="font-size:12px;font-weight:700;color:var(--text)">'+_escHtml(v.title||v.id)+'</div>';
+    vhtml+='<div style="font-size:10px;color:var(--dim);margin-top:2px">'+_escHtml(v.id)+' • '+_escHtml(v.status||'?')+' • '+_escHtml(v.tags_count||0)+' tags • cat '+_escHtml(v.category||'?')+' • '+parseInt(v.views||0).toLocaleString()+' views</div>';
+    vhtml+='</div>';
+    if(hasIssues) vhtml+='<button class="btn btn-danger btn-sm" onclick="fixSingleVideo(\''+_escHtml(v.id)+'\',this)" style="font-size:10px;padding:3px 8px">Fix</button>';
+    else vhtml+='<span style="font-size:10px;color:var(--green)">✓ OK</span>';
+    vhtml+='</div>';
+    if(hasIssues){
+      vhtml+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">';
+      v.issues.forEach(function(i){vhtml+='<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(239,68,68,0.1);color:var(--red)">'+_escHtml(i)+'</span>';});
+      vhtml+='</div>';
+    }
+    vhtml+='</div>';
+  });
+  if(!vhtml) vhtml='<div style="color:var(--muted);font-size:12px">No videos found</div>';
+  document.getElementById('health-videos-list').innerHTML=vhtml;
+
+  // Playlists
+  var pls=d.playlists||[];
+  var plHtml='';
+  if(pls.length===0) plHtml='<div style="font-size:12px;color:var(--muted)">No playlists</div>';
+  else pls.forEach(function(p){plHtml+='<div style="font-size:12px;color:var(--text);margin-bottom:4px">• '+_escHtml(p.title)+' <span style="color:var(--dim)">('+p.count+' videos)</span></div>';});
+  document.getElementById('health-playlists').innerHTML=plHtml;
+}
+
+function saveChannelInfo(){
+  var st=document.getElementById('health-save-status');
+  st.textContent='Saving…';st.style.color='var(--muted)';
+  var kw=document.getElementById('health-keywords').value.trim();
+  fetch('/api/channel/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    description:document.getElementById('health-desc').value.trim(),
+    keywords:kw,
+    country:document.getElementById('health-country').value.trim(),
+    language:document.getElementById('health-language').value.trim()
+  })}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){st.textContent='Saved!';st.style.color='var(--green)';_auditCache=null;}
+    else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
+  }).catch(function(e){st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function fixSingleVideo(videoId,btn){
+  if(btn)btn.disabled=true;
+  fetch('/api/channel/fix-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_id:videoId})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){_auditCache=null;runChannelAudit();}
+    else{alert('Error: '+(d.error||'unknown'));if(btn)btn.disabled=false;}
+  }).catch(function(e){alert(e.message);if(btn)btn.disabled=false;});
+}
+
+function fixAllVideos(){
+  var btn=document.getElementById('health-fixall-btn');
+  btn.disabled=true;btn.textContent='Fixing…';
+  fetch('/api/channel/fix-all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  }).then(function(r){return r.json();}).then(function(d){
+    btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';
+    if(d.ok){_auditCache=null;runChannelAudit();}
+    else{alert('Error: '+(d.error||'unknown'));}
+  }).catch(function(e){btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';alert(e.message);});
+}
+
+function _escHtml(s){
+  var d=document.createElement('div');d.appendChild(document.createTextNode(s));return d.innerHTML;
 }
 
 // ===== SOCIAL PLATFORMS =====
@@ -4191,6 +4877,14 @@ function uploadToSocialPlatforms(){
       document.getElementById('pl-shorts-count').disabled=!this.checked;
     });
     </script>
+
+    <!-- Community post option -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--bg3);border-radius:8px">
+      <label style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;margin:0">
+        <input type="checkbox" id="pl-post-check" style="margin-right:4px"> Generate Community Post Draft
+      </label>
+      <span style="font-size:10px;color:var(--muted)">(AI-generated post text, copy to YouTube Studio)</span>
+    </div>
 
     <!-- Status message -->
     <div id="pl-status-msg" style="font-size:12px;color:var(--muted);text-align:center;min-height:18px;margin-bottom:8px"></div>
