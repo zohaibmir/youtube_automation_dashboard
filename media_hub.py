@@ -170,7 +170,8 @@ def upload_main_video(video_path: str, content: dict,
 def upload_clips_to_platforms(clip_paths: list[str], content: dict,
                               channel_slug: str | None = None,
                               youtube_shorts: bool = True,
-                              social_platforms: bool = True) -> dict:
+                              social_platforms: bool = True,
+                              include_stories: bool = False) -> dict:
     """Upload extracted clips to YouTube Shorts and/or social platforms.
 
     Args:
@@ -179,6 +180,7 @@ def upload_clips_to_platforms(clip_paths: list[str], content: dict,
         channel_slug: Optional channel slug for YouTube.
         youtube_shorts: If True, upload each clip as a YouTube Short.
         social_platforms: If True, upload each clip to all configured socials.
+        include_stories: If True, also upload to IG/FB Stories (when social_platforms is True).
     """
     results = {"youtube_shorts": [], "social": []}
     for clip_path in clip_paths:
@@ -212,11 +214,19 @@ def upload_clips_to_platforms(clip_paths: list[str], content: dict,
         # Social platforms upload
         if social_platforms:
             try:
-                from social_uploader import upload_to_platforms
+                from social_uploader import upload_to_platforms, list_platforms
+                # Build explicit target list when stories are excluded
+                plat_list = None
+                if not include_stories:
+                    plat_list = [
+                        p for p, cfg in list_platforms().items()
+                        if cfg.get("enabled") and cfg.get("access_token")
+                    ]
                 social_result = upload_to_platforms(
                     video_path=str(cp),
                     title=content.get("title", ""),
                     description=content.get("description", ""),
+                    platforms_list=plat_list,
                 )
                 results["social"].append({"path": clip_path, **social_result})
             except Exception as e:

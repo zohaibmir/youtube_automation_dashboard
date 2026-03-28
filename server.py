@@ -770,6 +770,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 channel_slug=data.get("channel"),
                 youtube_shorts=data.get("youtube_shorts", True),
                 social_platforms=data.get("social_platforms", True),
+                include_stories=data.get("include_stories", False),
             ))
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})

@@ -919,7 +919,10 @@ canvas{display:block;width:100%;height:auto}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
-          <input type="checkbox" id="ig-enabled"/> Enable Instagram uploads
+          <input type="checkbox" id="ig-enabled"/> Enable Instagram Reels
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="ig-stories-enabled"/> Enable Stories
         </label>
         <button class="btn btn-green btn-sm" onclick="saveSocialPlatform('instagram')">Save</button>
       </div>
@@ -949,7 +952,10 @@ canvas{display:block;width:100%;height:auto}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
-          <input type="checkbox" id="fb-enabled"/> Enable Facebook uploads
+          <input type="checkbox" id="fb-enabled"/> Enable Facebook Reels
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer">
+          <input type="checkbox" id="fb-stories-enabled"/> Enable Stories
         </label>
         <button class="btn btn-green btn-sm" onclick="saveSocialPlatform('facebook')">Save</button>
       </div>
@@ -994,6 +1000,13 @@ canvas{display:block;width:100%;height:auto}
     </div>
   </details>
 </div>
+
+  <!-- WhatsApp Status note -->
+  <div style="padding:9px 11px;background:rgba(37,211,102,0.06);border:1px solid rgba(37,211,102,0.15);border-radius:8px;margin-bottom:12px;font-size:11px;color:var(--muted);line-height:1.6">
+    <strong style="color:#25D366">&#128172; WhatsApp Status</strong><br>
+    WhatsApp Business API does not support posting Status updates &mdash; it&rsquo;s a client-only feature with no public API.
+    To share Shorts as WhatsApp Status, download the clip from <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/shorts/</code> and post it manually via WhatsApp mobile.
+  </div>
 
 </div>
 
@@ -1097,6 +1110,9 @@ canvas{display:block;width:100%;height:auto}
         </label>
         <label style="font-size:11px;display:flex;align-items:center;gap:4px;margin:0">
           <input type="checkbox" id="stu-social" checked/> Social Platforms (IG, FB, TikTok)
+        </label>
+        <label style="font-size:11px;display:flex;align-items:center;gap:4px;margin:0">
+          <input type="checkbox" id="stu-stories" checked/> Include Stories (IG + FB)
         </label>
       </div>
       <button class="btn btn-green" onclick="studioUploadClips()" id="stu-upload-clips-btn">&#128640; Upload All Clips</button>
@@ -4465,7 +4481,8 @@ function studioUploadClips(){
     tags:tags,
     channel:document.getElementById('stu-channel').value||null,
     youtube_shorts:document.getElementById('stu-yt-shorts').checked,
-    social_platforms:document.getElementById('stu-social').checked
+    social_platforms:document.getElementById('stu-social').checked,
+    include_stories:document.getElementById('stu-stories').checked
   })}).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){
@@ -4755,9 +4772,9 @@ function _updateSocialBadges(){
 function _updatePipelineSocialSection(){
   var section=document.getElementById('pl-social-section');
   if(!section)return;
-  var hasAny=_socialPlatforms.some(function(p){return p.connected&&p.enabled;});
+  var hasAny=_socialPlatforms.some(function(p){return p.connected&&(p.enabled||p.stories_enabled);});
   section.style.display=hasAny?'block':'none';
-  // Pre-check enabled platforms
+  // Pre-check enabled platforms + stories
   _socialPlatforms.forEach(function(p){
     var checkId=p.platform==='instagram'?'pl-social-ig':p.platform==='facebook'?'pl-social-fb':'pl-social-tt';
     var cb=document.getElementById(checkId);
@@ -4765,6 +4782,16 @@ function _updatePipelineSocialSection(){
       cb.checked=p.connected&&p.enabled;
       cb.disabled=!p.connected;
       cb.parentElement.style.opacity=p.connected?'1':'0.4';
+    }
+    // Stories checkboxes
+    if(p.platform==='instagram'||p.platform==='facebook'){
+      var storyId=p.platform==='instagram'?'pl-social-ig-story':'pl-social-fb-story';
+      var scb=document.getElementById(storyId);
+      if(scb){
+        scb.checked=p.connected&&p.stories_enabled;
+        scb.disabled=!p.connected;
+        scb.parentElement.style.opacity=p.connected?'1':'0.4';
+      }
     }
   });
 }
@@ -4775,11 +4802,13 @@ function saveSocialPlatform(platform){
     config.user_id=document.getElementById('ig-user-id').value.trim();
     config.access_token=document.getElementById('ig-access-token').value.trim();
     config.enabled=document.getElementById('ig-enabled').checked;
+    config.stories_enabled=document.getElementById('ig-stories-enabled').checked;
     config.account_name='IG User '+config.user_id.slice(-4);
   }else if(platform==='facebook'){
     config.page_id=document.getElementById('fb-page-id').value.trim();
     config.access_token=document.getElementById('fb-access-token').value.trim();
     config.enabled=document.getElementById('fb-enabled').checked;
+    config.stories_enabled=document.getElementById('fb-stories-enabled').checked;
     config.account_name='Page '+config.page_id.slice(-4);
   }else if(platform==='tiktok'){
     config.client_key=document.getElementById('tt-client-key').value.trim();
@@ -4921,13 +4950,19 @@ function uploadToSocialPlatforms(){
 
       <!-- Social Platform Upload (Shorts → Reels) -->
       <div id="pl-social-section" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(124,109,250,0.06);border:1px solid rgba(124,109,250,0.15);border-radius:8px">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px">&#127760; Also post Shorts as Reels</div>
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px">&#127760; Also post Shorts as Reels / Stories</div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
-            <input type="checkbox" class="social-pl-check" value="instagram" id="pl-social-ig"/> 📸 Instagram
+            <input type="checkbox" class="social-pl-check" value="instagram" id="pl-social-ig"/> 📸 IG Reels
           </label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
-            <input type="checkbox" class="social-pl-check" value="facebook" id="pl-social-fb"/> 📘 Facebook
+            <input type="checkbox" class="social-pl-check" value="instagram_story" id="pl-social-ig-story"/> 📸 IG Story
+          </label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
+            <input type="checkbox" class="social-pl-check" value="facebook" id="pl-social-fb"/> 📘 FB Reels
+          </label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
+            <input type="checkbox" class="social-pl-check" value="facebook_story" id="pl-social-fb-story"/> 📘 FB Story
           </label>
           <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:0;cursor:pointer">
             <input type="checkbox" class="social-pl-check" value="tiktok" id="pl-social-tt"/> 🎵 TikTok

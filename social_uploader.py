@@ -52,6 +52,7 @@ def list_platforms() -> list[dict]:
             "enabled": info.get("enabled", False),
             "connected": bool(info.get("access_token")),
             "account_name": info.get("account_name", ""),
+            "stories_enabled": info.get("stories_enabled", False),
         })
     return result
 
@@ -183,6 +184,56 @@ def upload_instagram_reel(video_path: str, caption: str) -> str:
     return media_id
 
 
+def upload_instagram_story(video_path: str, caption: str = "") -> str:
+    """Upload a Story to Instagram. Returns the media ID.
+
+    Uses the same Graph API as Reels but with media_type=STORIES.
+    Stories disappear after 24hrs. Max 60s video.
+    Same token permissions as Reels (instagram_content_publish).
+    """
+    platforms = _load_platforms()
+    ig = platforms.get("instagram", {})
+    token = ig.get("access_token")
+    ig_user_id = ig.get("user_id")
+    if not token or not ig_user_id:
+        raise RuntimeError(
+            "Instagram not configured. Go to Settings → Social Platforms → Instagram "
+            "and enter your access token + IG User ID."
+        )
+
+    logger.info("Uploading Story to Instagram (user=%s)…", ig_user_id)
+
+    # Create STORIES container via resumable upload
+    url = f"{_META_GRAPH_URL}/{ig_user_id}/media"
+    file_size = os.path.getsize(video_path)
+
+    init_resp = requests.post(url, params={
+        "media_type": "STORIES",
+        "upload_type": "resumable",
+        "access_token": token,
+    }, timeout=30)
+    init_resp.raise_for_status()
+    container_id = init_resp.json()["id"]
+    upload_url = init_resp.json().get("uri")
+
+    if not upload_url:
+        raise RuntimeError("Instagram API did not return a resumable upload URI for Stories.")
+
+    with open(video_path, "rb") as f:
+        headers = {
+            "Authorization": f"OAuth {token}",
+            "offset": "0",
+            "file_size": str(file_size),
+        }
+        upload_resp = requests.post(upload_url, headers=headers, data=f, timeout=300)
+        upload_resp.raise_for_status()
+
+    _ig_wait_for_processing(container_id, token)
+    media_id = _ig_publish(container_id, token, ig_user_id)
+    logger.info("Instagram Story published: media_id=%s", media_id)
+    return media_id
+
+
 # ── Facebook Reels (Pages API) ───────────────────────────────────────────────
 # Setup:
 #   1. Same Meta Developer App as Instagram
@@ -250,6 +301,40 @@ def upload_facebook_reel(video_path: str, title: str, description: str) -> str:
     result = finish_resp.json()
     logger.info("Facebook Reel published: video_id=%s", video_id)
     return result.get("video_id", video_id)
+
+
+def upload_facebook_story(video_path: str) -> str:
+    """Upload a Story to a Facebook Page. Returns the post ID.
+
+    Uses the Pages Photo/Video Stories API.
+    Stories disappear after 24hrs. Max 120s video.
+    Same Page token as Reels (pages_manage_posts).
+    """
+    platforms = _load_platforms()
+    fb = platforms.get("facebook", {})
+    token = fb.get("access_token")
+    page_id = fb.get("page_id")
+    if not token or not page_id:
+        raise RuntimeError(
+            "Facebook not configured. Go to Settings → Social Platforms → Facebook "
+            "and enter your Page Access Token + Page ID."
+        )
+
+    logger.info("Uploading Story to Facebook Page (page=%s)…", page_id)
+
+    # Upload video story via multipart form
+    url = f"{_META_GRAPH_URL}/{page_id}/video_stories"
+    with open(video_path, "rb") as f:
+        resp = requests.post(
+            url,
+            files={"source": (os.path.basename(video_path), f, "video/mp4")},
+            data={"upload_phase": "start", "access_token": token},
+            timeout=300,
+        )
+    resp.raise_for_status()
+    post_id = resp.json().get("id", "")
+    logger.info("Facebook Story published: post_id=%s", post_id)
+    return post_id
 
 
 # ── TikTok (Content Posting API v2) ──────────────────────────────────────────
@@ -404,6 +489,8 @@ def upload_to_platforms(
         description:     Video description.
         caption:         Caption text (used for Instagram). Falls back to title.
         platforms_list:  Specific platforms to upload to. None = all enabled.
+                         Supports: instagram, facebook, tiktok,
+                                   instagram_story, facebook_story
 
     Returns:
         Dict of {platform: {"ok": bool, "id": str, "error": str}}.
@@ -411,14 +498,23 @@ def upload_to_platforms(
     all_platforms = _load_platforms()
     results = {}
 
-    # Determine which platforms to upload to
-    targets = platforms_list or [p for p, cfg in all_platforms.items()
-                                 if cfg.get("enabled") and cfg.get("access_token")]
+    # Build default target list
+    if platforms_list is not None:
+        targets = platforms_list
+    else:
+        targets = []
+        for p, cfg in all_platforms.items():
+            if cfg.get("enabled") and cfg.get("access_token"):
+                targets.append(p)
+            if cfg.get("stories_enabled") and cfg.get("access_token"):
+                if p in ("instagram", "facebook"):
+                    targets.append(f"{p}_story")
 
     ig_caption = caption or f"{title}\n\n{description}"
 
     for platform in targets:
-        cfg = all_platforms.get(platform, {})
+        base_platform = platform.replace("_story", "")
+        cfg = all_platforms.get(base_platform, {})
         if not cfg.get("access_token"):
             results[platform] = {"ok": False, "error": "Not configured (no access token)"}
             continue
@@ -428,9 +524,17 @@ def upload_to_platforms(
                 media_id = upload_instagram_reel(video_path, ig_caption)
                 results["instagram"] = {"ok": True, "id": media_id}
 
+            elif platform == "instagram_story":
+                media_id = upload_instagram_story(video_path, ig_caption)
+                results["instagram_story"] = {"ok": True, "id": media_id}
+
             elif platform == "facebook":
                 video_id = upload_facebook_reel(video_path, title, description)
                 results["facebook"] = {"ok": True, "id": video_id}
+
+            elif platform == "facebook_story":
+                post_id = upload_facebook_story(video_path)
+                results["facebook_story"] = {"ok": True, "id": post_id}
 
             elif platform == "tiktok":
                 pub_id = upload_tiktok_video(video_path, title)
