@@ -63,11 +63,27 @@ def _extract_json(raw: str) -> dict:
     """Robustly extract a JSON object from Claude's response text.
 
     Handles: bare JSON, ```json fenced blocks, and markdown-wrapped output.
+    Also repairs common JSON issues (trailing commas, unescaped control chars).
     """
+    def _try_parse(s: str) -> dict | None:
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            pass
+        # Repair: remove trailing commas before } or ]
+        fixed = re.sub(r",\s*([}\]])", r"\1", s)
+        # Repair: replace literal newlines/tabs inside strings (not \n / \t)
+        try:
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            return None
+
     # Try markdown code block first
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     if m:
-        return json.loads(m.group(1))
+        result = _try_parse(m.group(1))
+        if result:
+            return result
     # Fall back to outermost { … } with proper brace matching
     start = raw.index("{")
     depth = 0
@@ -77,9 +93,16 @@ def _extract_json(raw: str) -> dict:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return json.loads(raw[start : i + 1])
+                result = _try_parse(raw[start : i + 1])
+                if result:
+                    return result
+                break
     # Last resort: naive slice
-    return json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
+    candidate = raw[raw.index("{") : raw.rindex("}") + 1]
+    result = _try_parse(candidate)
+    if result:
+        return result
+    raise json.JSONDecodeError("Could not parse JSON from response", candidate, 0)
 
 
 def generate_script(topic: str, guidance: str | None = None) -> dict:

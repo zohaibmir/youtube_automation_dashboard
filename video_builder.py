@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     AudioFileClip,
     ColorClip,
@@ -23,11 +23,12 @@ from moviepy.editor import (
 
 from config import (
     BG_MUSIC_VOLUME_DB,
-    CHANNEL_NICHE,
+    CHANNEL_NAME,
     CROSSFADE_DURATION,
     INTRO_DURATION,
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
+    OUTRO_CTA_TEXT,
     OUTRO_DURATION,
 )
 from core.text_renderer import (
@@ -44,6 +45,27 @@ _FPS = 24
 _VIDEO_WIDTH = 1920
 _VIDEO_HEIGHT = 1080
 _THREADS = os.cpu_count() or 4
+
+
+def _resolve_channel_name() -> str:
+    """Get channel display name: CHANNEL_NAME config → default channel in channels.json → fallback."""
+    if CHANNEL_NAME:
+        return CHANNEL_NAME
+    try:
+        import json
+        channels_path = os.path.join(os.path.dirname(__file__), "tokens", "channels.json")
+        with open(channels_path) as f:
+            channels = json.load(f)
+        for slug, cfg in channels.items():
+            if cfg.get("is_default"):
+                return cfg.get("name", slug)
+        # No default — return first channel name
+        if channels:
+            first = next(iter(channels.values()))
+            return first.get("name", "")
+    except Exception:
+        pass
+    return ""
 
 
 # ── Encoder detection ─────────────────────────────────────────────────────────
@@ -148,7 +170,7 @@ def _make_intro(channel_name: str, duration: float):
     draw.text((tx, ty), channel_name, font=font_big, fill=(255, 255, 255))
 
     # Subtle tagline
-    tagline = "▶  PRESS SUBSCRIBE  ▶"
+    tagline = "▶  " + OUTRO_CTA_TEXT + "  ▶"
     bbox2 = draw.textbbox((0, 0), tagline, font=font_sub)
     tw2 = bbox2[2] - bbox2[0]
     draw.text(
@@ -182,7 +204,7 @@ def _make_outro(channel_name: str, duration: float):
     )
 
     # Subscribe CTA
-    cta = "LIKE · SUBSCRIBE · SHARE"
+    cta = OUTRO_CTA_TEXT
     bbox2 = draw.textbbox((0, 0), cta, font=font_cta)
     tw2 = bbox2[2] - bbox2[0]
     draw.text(
@@ -237,7 +259,7 @@ def build_video(
         output_path = f"{OUTPUT_DIR}/{slug}.mp4"
 
     cf = CROSSFADE_DURATION
-    channel_name = CHANNEL_NICHE.title()
+    channel_name = _resolve_channel_name()
 
     # ── Intro ─────────────────────────────────────────────────────────────────
     intro_clip = _make_intro(channel_name, INTRO_DURATION)

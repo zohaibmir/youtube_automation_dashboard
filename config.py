@@ -16,6 +16,7 @@ PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
 YOUTUBE_CLIENT_SECRETS: str = os.getenv("YOUTUBE_CLIENT_SECRETS", "client_secrets.json")
 
 # ── Channel Settings ──────────────────────────────────────────────────────────
+CHANNEL_NAME: str = os.getenv("CHANNEL_NAME", "")  # Display name for intro/outro
 CHANNEL_NICHE: str = os.getenv("CHANNEL_NICHE", "personal finance")
 CHANNEL_LANGUAGE: str = os.getenv("CHANNEL_LANGUAGE", "hinglish")
 CHANNEL_AUDIENCE: str = os.getenv("CHANNEL_AUDIENCE", "South Asia and Gulf")
@@ -66,6 +67,8 @@ BG_MUSIC_PATH: str = os.getenv("BG_MUSIC_PATH", "")
 INTRO_DURATION: float = float(os.getenv("INTRO_DURATION", "4"))
 # Outro duration in seconds with subscribe CTA (0 = no outro)
 OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
+# Outro CTA text shown in the end card
+OUTRO_CTA_TEXT: str = os.getenv("OUTRO_CTA_TEXT", "LIKE · SUBSCRIBE · SHARE")
 
 # ── Model & API Constants ─────────────────────────────────────────────────────
 CLAUDE_MODEL: str = "claude-sonnet-4-20250514"

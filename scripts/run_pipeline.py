@@ -23,14 +23,12 @@ def main():
     parser.add_argument("--social", action="store_true", help="Upload to social platforms too")
     args = parser.parse_args()
 
-    from pipeline import run_pipeline
+    from pipeline import run
 
-    result = run_pipeline(
+    result = run(
         topic=args.topic,
         channel_slug=args.channel,
-        build_shorts=args.shorts,
-        upload=args.upload,
-        social_upload=args.social,
+        shorts_count=2 if args.shorts else 0,
     )
 
     if result:

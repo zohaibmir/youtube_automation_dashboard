@@ -147,14 +147,14 @@ def _db_settings() -> dict:
 # ── Exposed .env keys ──────────────────────────────────────────────────────────
 _EXPOSED_KEYS = {
     "ANTHROPIC_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID",
-    "PEXELS_API_KEY", "CHANNEL_NICHE", "CHANNEL_LANGUAGE",
+    "PEXELS_API_KEY", "CHANNEL_NAME", "CHANNEL_NICHE", "CHANNEL_LANGUAGE",
     "CHANNEL_AUDIENCE", "VIDEOS_PER_WEEK", "DEFAULT_VISIBILITY",
     "YOUTUBE_CATEGORY_ID", "VOICE_STABILITY", "VOICE_SIMILARITY",
     "VOICE_STYLE", "YOUTUBE_CLIENT_SECRETS", "YOUTUBE_WEB_CLIENT_ID",
     "VISUAL_MODE", "GTTS_SPEECH_RATE",
     "TTS_PROVIDER", "EDGE_TTS_VOICE",
     "KEN_BURNS_ZOOM", "CROSSFADE_DURATION", "BG_MUSIC_VOLUME_DB",
-    "BG_MUSIC_PATH", "INTRO_DURATION", "OUTRO_DURATION",
+    "BG_MUSIC_PATH", "INTRO_DURATION", "OUTRO_DURATION", "OUTRO_CTA_TEXT",
 }
 
 _ENV_PATH = str(Path(__file__).parent / ".env")
@@ -243,6 +243,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
             self._json_response(safe)
+        elif path == "/api/pipeline/lock-status":
+            from pipeline import pipeline_status
+            self._json_response(pipeline_status())
         elif path == "/api/channels":
             self._handle_channels_get()
         elif path == "/api/social/platforms":
@@ -276,6 +279,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             self._json_response({"ok": True})
+        elif path == "/api/pipeline/kill":
+            self._handle_pipeline_kill()
+        elif path == "/api/settings/sync-env":
+            self._handle_settings_sync_env()
         elif path == "/api/settings":
             self._handle_settings_post()
         elif path == "/api/upload-music":
@@ -441,6 +448,56 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             with _pipeline_lock:
                 _pipeline_job.update({"status": "failed", "message": str(exc), "error": str(exc)})
             self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_pipeline_kill(self) -> None:
+        """POST /api/pipeline/kill — Kill a running pipeline process and clear lock."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        from pipeline import kill_pipeline
+        result = kill_pipeline()
+        # Also reset the in-memory pipeline state
+        with _pipeline_lock:
+            _pipeline_job.update({
+                "status": "idle", "topic": None, "message": "",
+                "video_url": None, "thumbnail_url": None, "title": None,
+                "vid_db_id": None, "youtube_url": None, "error": None,
+                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+            })
+        self._json_response(result)
+
+    def _handle_settings_sync_env(self) -> None:
+        """POST /api/settings/sync-env — Write dashboard production settings to .env."""
+        if self.client_address[0] not in _LOCALHOST:
+            self.send_response(403); self.end_headers(); return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            # Map of dashboard field → .env key
+            env_map = {
+                "channelName":    "CHANNEL_NAME",
+                "outroCta":       "OUTRO_CTA_TEXT",
+                "introDur":       "INTRO_DURATION",
+                "outroDur":       "OUTRO_DURATION",
+                "kenBurns":       "KEN_BURNS_ZOOM",
+                "crossfade":      "CROSSFADE_DURATION",
+                "musicVol":       "BG_MUSIC_VOLUME_DB",
+                "ttsProvider":    "TTS_PROVIDER",
+                "edgeVoice":      "EDGE_TTS_VOICE",
+                "ytVis":          "DEFAULT_VISIBILITY",
+                "ytCategory":     "YOUTUBE_CATEGORY_ID",
+            }
+            updated = []
+            for js_key, env_key in env_map.items():
+                val = data.get(js_key)
+                if val is not None and str(val).strip():
+                    # Convert kenBurns percentage (5) to decimal (0.05)
+                    if js_key == "kenBurns":
+                        val = str(float(val) / 100)
+                    _update_env_key(env_key, str(val))
+                    updated.append(env_key)
+            self._json_response({"ok": True, "updated": updated})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
 
     def _handle_settings_post(self) -> None:
         if self.client_address[0] not in _LOCALHOST:

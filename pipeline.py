@@ -8,6 +8,7 @@ All business logic lives in the modules it calls.
 import glob
 import logging
 import os
+import signal
 import shutil
 
 from audio_generator import generate_audio_segments
@@ -17,6 +18,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _THUMB_OUT = os.path.join(_BASE_DIR, "thumbnail.jpg")
 _IMAGES_DIR = os.path.join(_BASE_DIR, "images")
 _AUDIO_DIR = os.path.join(_BASE_DIR, "audio")
+_LOCK_FILE = os.path.join(_BASE_DIR, ".pipeline.lock")
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start
 from shorts_builder import build_shorts
@@ -26,6 +28,80 @@ from visual_fetcher import fetch_segment_images, fetch_segment_videos
 from youtube_uploader import upload_video
 
 logger = logging.getLogger(__name__)
+
+
+# ── Pipeline process guard ────────────────────────────────────────────────────
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a process with the given PID is still running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _acquire_lock() -> None:
+    """Write current PID to lock file. Raises if another pipeline is running."""
+    if os.path.exists(_LOCK_FILE):
+        try:
+            with open(_LOCK_FILE) as f:
+                old_pid = int(f.read().strip())
+            if _is_pid_alive(old_pid) and old_pid != os.getpid():
+                raise RuntimeError(
+                    f"Another pipeline is already running (PID {old_pid}). "
+                    f"Kill it first or wait for it to finish."
+                )
+            # Stale lock — process is dead, we can take over
+            logger.info("Removing stale lock from PID %d", old_pid)
+        except (ValueError, FileNotFoundError):
+            pass  # Corrupt lock file — remove it
+    with open(_LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+
+def _release_lock() -> None:
+    """Remove the lock file if it belongs to this process."""
+    try:
+        if os.path.exists(_LOCK_FILE):
+            with open(_LOCK_FILE) as f:
+                pid = int(f.read().strip())
+            if pid == os.getpid():
+                os.remove(_LOCK_FILE)
+    except Exception:
+        pass
+
+
+def pipeline_status() -> dict:
+    """Return the current pipeline lock status (for the dashboard)."""
+    if not os.path.exists(_LOCK_FILE):
+        return {"running": False, "pid": None}
+    try:
+        with open(_LOCK_FILE) as f:
+            pid = int(f.read().strip())
+        alive = _is_pid_alive(pid)
+        return {"running": alive, "pid": pid if alive else None}
+    except Exception:
+        return {"running": False, "pid": None}
+
+
+def kill_pipeline() -> dict:
+    """Kill a running pipeline process (if any) and release the lock."""
+    if not os.path.exists(_LOCK_FILE):
+        return {"ok": True, "message": "No pipeline running"}
+    try:
+        with open(_LOCK_FILE) as f:
+            pid = int(f.read().strip())
+        if _is_pid_alive(pid):
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Killed pipeline PID %d", pid)
+            os.remove(_LOCK_FILE)
+            return {"ok": True, "message": f"Killed pipeline (PID {pid})"}
+        else:
+            os.remove(_LOCK_FILE)
+            return {"ok": True, "message": "Stale lock removed (process already dead)"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _cleanup_temp_files() -> None:
@@ -90,6 +166,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
     Returns:
         The YouTube video ID on success.
     """
+    _acquire_lock()
     logger.info("Pipeline starting: %s", topic)
     vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
     _cleanup_media_dirs()
@@ -193,6 +270,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         raise
     finally:
         _cleanup_temp_files()
+        _release_lock()
 
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
@@ -219,6 +297,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
             progress_cb(msg)
         logger.info(msg)
 
+    _acquire_lock()
     vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
     _cleanup_media_dirs()
     try:
@@ -297,3 +376,4 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         raise
     finally:
         _cleanup_temp_files()
+        _release_lock()

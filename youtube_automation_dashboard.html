@@ -217,7 +217,9 @@ canvas{display:block;width:100%;height:auto}
   <div class="gpb-header">
     <div class="gpb-title"><span id="gpb-icon">&#127916;</span> <span id="gpb-label">Pipeline idle</span></div>
     <div class="gpb-status" id="gpb-msg"></div>
+    <button class="btn btn-danger btn-sm" onclick="killPipeline()" style="font-size:10px;padding:2px 8px;margin-left:8px" title="Kill pipeline">&#9632; Kill</button>
   </div>
+  <div id="pipeline-lock-indicator" style="display:none;font-size:10px;color:var(--amber);align-items:center;gap:4px;padding:2px 12px"></div>
   <div class="gpb-track"><div class="gpb-fill" id="gpb-fill" style="width:0%"></div></div>
   <div class="gpb-steps">
     <span class="gpb-step" id="gpb-script">&#9997;&#65038; Script</span>
@@ -2156,8 +2158,11 @@ services:
       </div>
     </div>
   </div>
+  <div style="margin-top:8px">
+    <label>Outro CTA text <span style="color:var(--muted);font-weight:400">(shown in intro tagline + outro end card)</span></label>
+    <input type="text" id="cfg-outro-cta" value="LIKE · SUBSCRIBE · SHARE" placeholder="e.g. LIKE · SUBSCRIBE · SHARE" oninput="markDirty()"/>
+  </div>
   <hr class="div" style="margin:12px 0"/>
-  <label>Background music <span style="color:var(--muted);font-weight:400">(upload .mp3 — loops under narration)</span></label>
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
     <input type="file" id="cfg-music-file" accept=".mp3,audio/mpeg" onchange="handleMusicUpload(this)" style="flex:1;font-size:12px"/>
     <span id="cfg-music-name" style="font-size:11px;color:var(--muted)">No music selected</span>
@@ -3148,6 +3153,9 @@ function loadSettings(){ loadAllSettings(); }
       if(d.status==='running'){gpbStart();}
       else if(d.status==='ready'||d.status==='done'){_gpbUpdate(d);}
     }).catch(function(){});
+    // Check process lock status and refresh periodically
+    checkPipelineLock();
+    setInterval(checkPipelineLock,15000);
   },0);
 })();
 
@@ -3548,6 +3556,7 @@ function saveAllSettings(){
     crossfade: document.getElementById('cfg-crossfade').value,
     introDur: document.getElementById('cfg-intro').value,
     outroDur: document.getElementById('cfg-outro').value,
+    outroCta: document.getElementById('cfg-outro-cta').value,
     musicVol: document.getElementById('cfg-music-vol').value
   };
   _dbSave('config', s);
@@ -3557,6 +3566,19 @@ function saveAllSettings(){
   ind.style.color = 'var(--green)';
   checkKey();
   updateBudgetOverview();
+  syncSettingsToEnv(s);
+}
+
+function syncSettingsToEnv(s){
+  fetch('/api/settings/sync-env',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        var ind=document.getElementById('save-indicator');
+        ind.textContent='✓ Saved & synced to .env';
+        ind.style.color='var(--green)';
+      }
+    }).catch(function(){});
 }
 
 async function loadAllSettings(){
@@ -3593,6 +3615,7 @@ async function loadAllSettings(){
     if(s.crossfade){document.getElementById('cfg-crossfade').value=s.crossfade;document.getElementById('cf-val').textContent=s.crossfade+'s';}
     if(s.introDur){document.getElementById('cfg-intro').value=s.introDur;document.getElementById('intro-val').textContent=s.introDur+'s';}
     if(s.outroDur){document.getElementById('cfg-outro').value=s.outroDur;document.getElementById('outro-val').textContent=s.outroDur+'s';}
+    if(s.outroCta){document.getElementById('cfg-outro-cta').value=s.outroCta;}
     if(s.musicVol){document.getElementById('cfg-music-vol').value=s.musicVol;document.getElementById('mv-val').textContent=s.musicVol+'dB';}
     // Update status dots for keys that are set
     if(s.anthropic){setStatus('anthropic','on','Saved');}
@@ -4318,6 +4341,38 @@ function cancelPipeline(){
   document.getElementById('pl-modal').style.display='none';
 }
 
+function killPipeline(){
+  if(!confirm('Kill the running pipeline process? This will stop video generation immediately.'))return;
+  fetch('/api/pipeline/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        _plStatus='idle';
+        if(_plPollTimer){clearInterval(_plPollTimer);_plPollTimer=null;}
+        if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
+        _gpbUpdate({status:'idle'});
+        document.getElementById('pl-close-btn').disabled=false;
+        _plShowError('Pipeline killed by user.');
+        checkPipelineLock();
+      } else {
+        alert(d.error||'Failed to kill pipeline');
+      }
+    }).catch(function(e){alert('Network error: '+e.message);});
+}
+
+function checkPipelineLock(){
+  fetch('/api/pipeline/lock-status').then(function(r){return r.json();}).then(function(d){
+    var ind=document.getElementById('pipeline-lock-indicator');
+    if(!ind)return;
+    if(d.running){
+      ind.style.display='inline-flex';
+      ind.innerHTML='<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:5px;animation:pulse 1.5s infinite"></span>Pipeline running (PID '+d.pid+')';
+    } else {
+      ind.style.display='none';
+    }
+  }).catch(function(){});
+}
+
 // ===== UPLOAD STUDIO =====
 var _studioVideos=[];
 var _studioInfo=null;
@@ -4875,7 +4930,10 @@ function uploadToSocialPlatforms(){
   <div class="pl-modal">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:15px;font-weight:700;color:var(--text)">&#127916; Generate &amp; Preview Video</div>
-      <button class="btn btn-ghost btn-sm" onclick="cancelPipeline()" id="pl-close-btn">&#10005; Close</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn btn-danger btn-sm" onclick="killPipeline()" id="pl-kill-btn" title="Force-kill the running pipeline process">&#9632; Kill</button>
+        <button class="btn btn-ghost btn-sm" onclick="cancelPipeline()" id="pl-close-btn">&#10005; Close</button>
+      </div>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px" id="pl-topic-label"></div>
 
