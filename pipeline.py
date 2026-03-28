@@ -20,7 +20,7 @@ _IMAGES_DIR = os.path.join(_BASE_DIR, "images")
 _AUDIO_DIR = os.path.join(_BASE_DIR, "audio")
 _LOCK_FILE = os.path.join(_BASE_DIR, ".pipeline.lock")
 from content_generator import generate_script, script_text_to_segments
-from database import log_cost, log_video_complete, log_video_error, log_video_start
+from database import log_cost, log_video_complete, log_video_error, log_video_start, get_video_record, is_video_uploaded
 from shorts_builder import build_shorts
 from thumbnail import make_thumbnail
 from video_builder import build_video
@@ -238,10 +238,16 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 title=content.get("title"), count=shorts_count, music_path=music,
             )
 
-        # Step 6 — Upload main video
-        youtube_id = upload_video(video_path, thumbnail_path, content, channel_slug=channel_slug)
+        # Step 6 — Upload main video (skip if already uploaded)
+        if is_video_uploaded(vid_id):
+            rec = get_video_record(vid_id)
+            youtube_id = rec["youtube_id"]
+            logger.info("Video already uploaded (vid_id=%d, yt=%s) — skipping re-upload", vid_id, youtube_id)
+        else:
+            youtube_id = upload_video(video_path, thumbnail_path, content, channel_slug=channel_slug)
 
-        # Step 6b — Upload Shorts
+        # Step 6b — Upload Shorts (skip already-uploaded count)
+        shorts_uploaded = 0
         for sp in short_paths:
             try:
                 short_title = f"{content.get('title', topic)} #Shorts"
@@ -251,6 +257,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                     "tags": content.get("tags", []) + ["Shorts"],
                 }
                 upload_video(sp, thumbnail_path, short_content, channel_slug=channel_slug)
+                shorts_uploaded += 1
                 logger.info("Uploaded Short: %s", sp)
             except Exception as e:
                 logger.error("Failed to upload Short %s: %s", sp, e)

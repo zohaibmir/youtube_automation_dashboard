@@ -131,6 +131,19 @@ def log_video_error(vid_id, error_msg):
         conn.commit()
 
 
+def get_video_record(vid_id: int) -> dict | None:
+    """Fetch a single video record by DB id. Returns dict or None."""
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM videos WHERE id=?", (vid_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def is_video_uploaded(vid_id: int) -> bool:
+    """Check if a video already has a youtube_id (i.e. was uploaded)."""
+    rec = get_video_record(vid_id)
+    return bool(rec and rec.get("youtube_id"))
+
+
 def get_video_history(limit=50):
     with _conn() as conn:
         rows = conn.execute(

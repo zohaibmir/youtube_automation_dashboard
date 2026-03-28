@@ -409,13 +409,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             _pipeline_job["message"] = "Uploading to YouTube…"
         try:
             from youtube_uploader import upload_video as _upload
-            from database import log_video_complete
-            from pipeline import run as _run  # noqa — just to ensure imports don't break
-            youtube_id = _upload(video_path, thumb_path, content, channel_slug=channel_slug)
-            segments = content.get("segments", [])
-            duration_s = sum(seg.get("duration_s", 45) for seg in segments)
-            log_video_complete(vid_db_id, content.get("title", ""), youtube_id, duration_s)
-            yt_url = f"https://youtube.com/watch?v={youtube_id}"
+            from database import log_video_complete, is_video_uploaded, get_video_record
+            # Guard: skip main video upload if already uploaded
+            if is_video_uploaded(vid_db_id):
+                rec = get_video_record(vid_db_id)
+                youtube_id = rec["youtube_id"]
+                yt_url = f"https://youtube.com/watch?v={youtube_id}"
+                import logging as _log
+                _log.getLogger(__name__).info("Video already uploaded (vid=%d, yt=%s) — skipping", vid_db_id, youtube_id)
+            else:
+                youtube_id = _upload(video_path, thumb_path, content, channel_slug=channel_slug)
+                segments = content.get("segments", [])
+                duration_s = sum(seg.get("duration_s", 45) for seg in segments)
+                log_video_complete(vid_db_id, content.get("title", ""), youtube_id, duration_s)
+                yt_url = f"https://youtube.com/watch?v={youtube_id}"
             # Upload Shorts if any were generated
             shorts_uploaded = 0
             for sp in (shorts_paths or []):
