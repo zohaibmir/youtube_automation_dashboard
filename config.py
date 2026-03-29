@@ -77,6 +77,10 @@ AUTO_CHAPTERS: bool = os.getenv("AUTO_CHAPTERS", "true").lower() in ("true", "1"
 PIN_FIRST_COMMENT: bool = os.getenv("PIN_FIRST_COMMENT", "true").lower() in ("true", "1", "yes")
 # Custom pinned comment text (default generated from channel name if empty)
 PINNED_COMMENT_TEXT: str = os.getenv("PINNED_COMMENT_TEXT", "")
+# Burn a YouTube-style end screen (subscribe circle + watch-next box) into the last N seconds
+AUTO_END_SCREENS: bool = os.getenv("AUTO_END_SCREENS", "true").lower() in ("true", "1", "yes")
+# Duration in seconds for the burned-in end screen (replaces outro when enabled)
+END_SCREEN_DURATION: float = float(os.getenv("END_SCREEN_DURATION", "20"))
 
 # ── Model & API Constants ─────────────────────────────────────────────────────
 CLAUDE_MODEL: str = "claude-sonnet-4-20250514"

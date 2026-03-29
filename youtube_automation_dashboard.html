@@ -3687,20 +3687,22 @@ function exportEnvFile(){
 
 // ---- YouTube Automation features ----
 function onYtaToggle(feature, cb){
-  if(feature==='chapters'){
-    var badge=document.getElementById('yta-chapters-badge');
-    if(badge){badge.textContent=cb.checked?'Enabled':'Disabled';badge.style.background=cb.checked?'rgba(61,219,160,0.12)':'rgba(247,110,110,0.08)';badge.style.color=cb.checked?'var(--teal)':'var(--red)';}
-  } else if(feature==='pin'){
-    var badge=document.getElementById('yta-pin-badge');
-    if(badge){badge.textContent=cb.checked?'Enabled':'Disabled';badge.style.background=cb.checked?'rgba(61,219,160,0.12)':'rgba(247,110,110,0.08)';badge.style.color=cb.checked?'var(--teal)':'var(--red)';}
+  var idMap={chapters:'yta-chapters-badge',pin:'yta-pin-badge',endscreens:'yta-endscreens-badge'};
+  var badge=document.getElementById(idMap[feature]||'');
+  if(badge){
+    badge.textContent=cb.checked?'Enabled':'Disabled';
+    badge.style.background=cb.checked?'rgba(61,219,160,0.12)':'rgba(247,110,110,0.08)';
+    badge.style.color=cb.checked?'var(--teal)':'var(--red)';
+    badge.style.borderColor=cb.checked?'rgba(61,219,160,0.25)':'rgba(247,110,110,0.3)';
   }
   markDirty();
 }
 
 function saveYtAutomation(){
   var s={
-    autoChapters: document.getElementById('yta-auto-chapters').checked ? 'true' : 'false',
-    pinComment:   document.getElementById('yta-pin-comment').checked   ? 'true' : 'false',
+    autoChapters:      document.getElementById('yta-auto-chapters').checked  ? 'true':'false',
+    pinComment:        document.getElementById('yta-pin-comment').checked    ? 'true':'false',
+    autoEndScreens:    document.getElementById('yta-end-screens').checked    ? 'true':'false',
     pinnedCommentText: (document.getElementById('yta-pin-text').value||'').trim()
   };
   _dbSave('yt_automation', s);
@@ -3708,7 +3710,7 @@ function saveYtAutomation(){
     .then(function(r){return r.json();})
     .then(function(d){
       var ind=document.getElementById('yta-save-indicator');
-      ind.textContent = d.ok ? '✓ Saved' : '⚠ Save failed';
+      ind.textContent=d.ok?'✓ Saved':'⚠ Save failed';
       setTimeout(function(){ind.textContent='';},3000);
     }).catch(function(){});
   _dirty=false;
@@ -3716,16 +3718,19 @@ function saveYtAutomation(){
 
 function loadYtAutomation(s){
   if(!s) return;
-  if(s.autoChapters!==undefined){
-    var cb=document.getElementById('yta-auto-chapters');
-    cb.checked=(s.autoChapters==='true'||s.autoChapters===true||s.autoChapters==='1');
-    onYtaToggle('chapters',cb);
-  }
-  if(s.pinComment!==undefined){
-    var cb2=document.getElementById('yta-pin-comment');
-    cb2.checked=(s.pinComment==='true'||s.pinComment===true||s.pinComment==='1');
-    onYtaToggle('pin',cb2);
-  }
+  var loads=[
+    {key:'autoChapters',   id:'yta-auto-chapters', feat:'chapters'},
+    {key:'pinComment',     id:'yta-pin-comment',   feat:'pin'},
+    {key:'autoEndScreens', id:'yta-end-screens',   feat:'endscreens'}
+  ];
+  loads.forEach(function(l){
+    if(s[l.key]!==undefined){
+      var cb=document.getElementById(l.id);
+      if(!cb) return;
+      cb.checked=(s[l.key]==='true'||s[l.key]===true||s[l.key]==='1');
+      onYtaToggle(l.feat,cb);
+    }
+  });
   if(s.pinnedCommentText) document.getElementById('yta-pin-text').value=s.pinnedCommentText;
 }
 

@@ -496,9 +496,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "ytVis":          "DEFAULT_VISIBILITY",
                 "ytCategory":     "YOUTUBE_CATEGORY_ID",
                 # YouTube Automation features
-                "autoChapters":   "AUTO_CHAPTERS",
-                "pinComment":     "PIN_FIRST_COMMENT",
+                "autoChapters":      "AUTO_CHAPTERS",
+                "pinComment":        "PIN_FIRST_COMMENT",
                 "pinnedCommentText": "PINNED_COMMENT_TEXT",
+                "autoEndScreens":    "AUTO_END_SCREENS",
             }
             updated = []
             for js_key, env_key in env_map.items():

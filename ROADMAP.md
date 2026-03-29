@@ -39,6 +39,7 @@ Target: India + Global English (South Asian diaspora, Muslim audience)
 | YouTube Chapters (auto timestamps) | `pipeline.py` | ✅ Just added — injected before upload |
 | Pin First Comment (subscribe CTA) | `youtube_uploader.py` + `pipeline.py` | ✅ Just added — pinned after every upload |
 | YouTube Automation settings tab | `youtube_automation_dashboard.html` | ✅ Just added — toggle on/off per feature |
+| Auto End Screens (burned-in) | `video_builder.py` | ✅ Just added — subscribe circle + watch-next box, last 20s |
 
 ---
 
@@ -67,10 +68,8 @@ Target: India + Global English (South Asian diaspora, Muslim audience)
 
 ---
 
-### 3. Auto End Screens
-**Impact:** End screens are the #1 retention tool — keep viewers on your channel.
-**What's needed:** Use YouTube Data API to add end screen elements after upload.
-**Effort:** Medium — requires a second API call post-upload.
+### ~~3. Auto End Screens~~ ✅
+**Done:** Burned-in end screen in the final 20 seconds of every video — subscribe circle, watch-next box, channel name. No API calls needed; controlled by `AUTO_END_SCREENS` env flag and toggle in YT Automation dashboard tab.
 
 ---
 
@@ -132,19 +131,10 @@ These must be done in YouTube Studio manually:
 |----------|---------|--------------|-----|
 | ~~1~~ | ~~YouTube Chapters auto-inject~~ | ~~1 session~~ | ~~HIGH — watch time~~ ✅ |
 | ~~2~~ | ~~Pin first comment after upload~~ | ~~1 session~~ | ~~HIGH — engagement~~ ✅ |
-| 3 | Telegram broadcast post | 1 session | HIGH — free traffic |
-| 3 | Telegram broadcast post | 1 session | HIGH — free traffic |
+| ~~3~~ | ~~Auto end screens~~ | ~~1 session~~ | ~~HIGH — retention~~ ✅ |
+| 4 | Telegram broadcast post | 1 session | HIGH — free traffic |
 | 4 | Wire social upload into pipeline | 1 session | HIGH — distribution |
 | 5 | Dashboard running jobs panel | 1 session | MEDIUM — ops |
 | 6 | Reddit auto-post | 2 sessions | MEDIUM — free traffic |
-| 7 | Auto end screens | 2 sessions | MEDIUM — retention |
 
 ---
-
-## 📊 Current Video in Progress
-
-**Job:** `f9c987d0`
-**Topic:** "7 Ancient Prophecies Being FULFILLED Right Now in 2026 — Signs The World Is Changing Forever"
-**Status:** Building clips (optimised FFmpeg path, CRF 23)
-**Target channel:** Truth That Never Shared
-**Segments:** 17 | **Shorts:** 2

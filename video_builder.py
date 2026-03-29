@@ -23,9 +23,11 @@ from moviepy.editor import (
 )
 
 from config import (
+    AUTO_END_SCREENS,
     BG_MUSIC_VOLUME_DB,
     CHANNEL_NAME,
     CROSSFADE_DURATION,
+    END_SCREEN_DURATION,
     INTRO_DURATION,
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
@@ -262,6 +264,81 @@ def _make_outro(channel_name: str, duration: float):
     return outro
 
 
+def _make_end_screen(channel_name: str, duration: float):
+    """Create a YouTube-style end screen burned into the last N seconds of the video.
+
+    Renders a static frame with:
+      - "Thanks for watching!" header
+      - Left: watch-next placeholder box with play icon
+      - Right: red subscribe circle + channel name
+
+    No API calls needed — baked directly into the video file.
+    """
+    if duration <= 0:
+        return None
+
+    W, H = _VIDEO_WIDTH, _VIDEO_HEIGHT
+    img = Image.new("RGB", (W, H), (8, 8, 12))
+    draw = ImageDraw.Draw(img)
+
+    font_hdr = _get_font(60)
+    font_med = _get_font(36)
+    font_sm  = _get_font(26)
+    font_xs  = _get_font(20)
+
+    cx, cy = W // 2, H // 2
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    hdr = "Thanks for watching!"
+    bb = draw.textbbox((0, 0), hdr, font=font_hdr)
+    draw.text(((W - (bb[2] - bb[0])) // 2, 70), hdr, font=font_hdr, fill=(255, 255, 255))
+
+    # Accent line below header
+    line_y = 70 + (bb[3] - bb[1]) + 18
+    draw.line([(cx - 280, line_y), (cx + 280, line_y)], fill=(124, 109, 250), width=2)
+
+    # ── Left: "Watch Next" placeholder box ────────────────────────────────────
+    bx1, by1, bx2, by2 = cx - 490, cy - 130, cx - 30, cy + 130
+    draw.rounded_rectangle([bx1, by1, bx2, by2], radius=12,
+                           fill=(20, 20, 32), outline=(70, 70, 100), width=2)
+    # Play triangle
+    tri_x = bx1 + 45
+    tri_cy = (by1 + by2) // 2
+    draw.polygon(
+        [(tri_x, tri_cy - 32), (tri_x + 52, tri_cy), (tri_x, tri_cy + 32)],
+        fill=(200, 200, 210)
+    )
+    wn = "Watch Next"
+    bb_wn = draw.textbbox((0, 0), wn, font=font_sm)
+    mid_bx = (bx1 + bx2) // 2
+    draw.text((mid_bx - (bb_wn[2] - bb_wn[0]) // 2, by2 - 55),
+              wn, font=font_sm, fill=(180, 180, 200))
+
+    # ── Right: Subscribe circle ────────────────────────────────────────────────
+    scx, scy, sr = cx + 295, cy - 20, 115
+    draw.ellipse([scx - sr, scy - sr, scx + sr, scy + sr], fill=(200, 20, 20))
+    draw.ellipse([scx - sr + 6, scy - sr + 6, scx + sr - 6, scy + sr - 6], fill=(230, 0, 0))
+    sub_txt = "SUBSCRIBE"
+    bb_sub = draw.textbbox((0, 0), sub_txt, font=font_xs)
+    draw.text(
+        (scx - (bb_sub[2] - bb_sub[0]) // 2, scy - (bb_sub[3] - bb_sub[1]) // 2),
+        sub_txt, font=font_xs, fill=(255, 255, 255)
+    )
+    # Channel name below circle
+    bb_ch = draw.textbbox((0, 0), channel_name, font=font_sm)
+    draw.text((scx - (bb_ch[2] - bb_ch[0]) // 2, scy + sr + 18),
+              channel_name, font=font_sm, fill=(210, 210, 220))
+    # CTA tagline
+    cta = OUTRO_CTA_TEXT
+    bb_cta = draw.textbbox((0, 0), cta, font=font_xs)
+    draw.text((scx - (bb_cta[2] - bb_cta[0]) // 2, scy + sr + 58),
+              cta, font=font_xs, fill=(140, 140, 155))
+
+    clip = ImageClip(np.array(img)).set_duration(duration)
+    clip = clip.crossfadeout(min(2.5, duration * 0.12))
+    return clip
+
+
 def build_video(
     segments: list[dict],
     audio_files: list[str],
@@ -353,8 +430,12 @@ def build_video(
 
         clips.append(clip.set_audio(audio))
 
-    # ── Outro ─────────────────────────────────────────────────────────────────
-    outro_clip = _make_outro(channel_name, OUTRO_DURATION)
+    # ── Outro / End Screen ─────────────────────────────────────────────────────
+    if AUTO_END_SCREENS:
+        outro_clip = _make_end_screen(channel_name, END_SCREEN_DURATION)
+        logger.info("Using burned-in end screen (%ds)", END_SCREEN_DURATION)
+    else:
+        outro_clip = _make_outro(channel_name, OUTRO_DURATION)
 
     # ── Assemble with crossfades ──────────────────────────────────────────────
     all_clips = []
