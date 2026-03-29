@@ -238,7 +238,7 @@ def generate_topic_ideas(count: int = 10) -> list[str]:
     """
     prompt = f"""Generate {count} trending YouTube topics for a {CHANNEL_NICHE} channel.
 Audience: {CHANNEL_AUDIENCE}. Language: {CHANNEL_LANGUAGE}.
-Return ONLY a JSON array of strings. Mix Hinglish and English.
+Return ONLY a JSON array of strings.
 Make them clickable and searchable."""
 
     logger.info("Generating %d topic ideas", count)

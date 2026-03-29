@@ -104,9 +104,9 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 
 ```bash
 # Channel identity
-CHANNEL_NICHE=personal finance
-CHANNEL_LANGUAGE=hinglish
-CHANNEL_AUDIENCE=South Asia and Gulf
+CHANNEL_NICHE=politics and religion
+CHANNEL_LANGUAGE=english
+CHANNEL_AUDIENCE=global
 
 # Visuals: "videos" (Pexels MP4 clips) or "images" (Pexels photos)
 VISUAL_MODE=videos

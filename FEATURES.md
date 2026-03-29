@@ -1,6 +1,6 @@
 # YouTube Automation — Features & Roadmap
 
-**Channel target:** South Asian & Gulf audiences (Urdu/Hindi/Hinglish)  
+**Channel target:** Global English audiences (Politics & Religion)  
 **Stack:** Python 3.13 · Claude Sonnet · ElevenLabs · Pexels · YouTube Data API v3  
 **Dashboard:** Single-file HTML (`youtube_automation_dashboard.html`) served at `http://localhost:8080`
 
@@ -27,7 +27,7 @@
 | `smoke_test.py` | 15-point import + integration smoke test |
 
 **Key pipeline capabilities:**
-- Auto-generates scripts in Hinglish/English/Urdu
+- Auto-generates scripts in English (global, conversational, or documentary style)
 - ElevenLabs TTS with tunable stability, similarity, style
 - Pexels visual fetching per script segment
 - FFmpeg multi-track video assembly

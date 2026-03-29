@@ -1,7 +1,8 @@
-# ElevenLabs voice IDs for South Asian content:
-# JBFqnCBsd6RMkjVDRZzb  George  - clear English, authoritative
-# TX3LPaxmHKxFdv7VOQHJ  Liam    - young, energetic
-# pNInz6obpgDQGcFmaJgB  Adam    - deep, serious
+# ElevenLabs voice IDs for global English content:
+# JBFqnCBsd6RMkjVDRZzb  George  - clear English, authoritative (ideal for politics/news)
+# TX3LPaxmHKxFdv7VOQHJ  Liam    - young, energetic (good for viral/trending)
+# pNInz6obpgDQGcFmaJgB  Adam    - deep, serious (great for religion/geopolitics)
+# nPczCjzI2devNBz1zQrb  Brian   - calm, professional (documentary style)
 # Custom: upload 30min voice sample to ElevenLabs to clone
 #
 # Values are read from .env (exported by the HTML dashboard Settings panel).

@@ -149,7 +149,7 @@ def create_tts_provider(
     elevenlabs_api_key: str = "",
     elevenlabs_voice_id: str = "",
     elevenlabs_voice_settings=None,
-    channel_language: str = "hinglish",
+    channel_language: str = "english",
     speech_rate: float = 1.0,
 ) -> ITTSProvider:
     """Factory: create a TTS provider by name.

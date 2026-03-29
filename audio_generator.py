@@ -25,9 +25,9 @@ def _build_provider() -> ITTSProvider:
     """Build the configured TTS provider from environment settings."""
     try:
         from config import CHANNEL_LANGUAGE
-        lang = CHANNEL_LANGUAGE or "hinglish"
+        lang = CHANNEL_LANGUAGE or "english"
     except Exception:
-        lang = "hinglish"
+        lang = "english"
 
     return create_tts_provider(
         TTS_PROVIDER or "edge",

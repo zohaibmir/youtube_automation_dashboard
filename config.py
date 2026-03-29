@@ -17,9 +17,9 @@ YOUTUBE_CLIENT_SECRETS: str = os.getenv("YOUTUBE_CLIENT_SECRETS", "client_secret
 
 # ── Channel Settings ──────────────────────────────────────────────────────────
 CHANNEL_NAME: str = os.getenv("CHANNEL_NAME", "")  # Display name for intro/outro
-CHANNEL_NICHE: str = os.getenv("CHANNEL_NICHE", "personal finance")
-CHANNEL_LANGUAGE: str = os.getenv("CHANNEL_LANGUAGE", "hinglish")
-CHANNEL_AUDIENCE: str = os.getenv("CHANNEL_AUDIENCE", "South Asia and Gulf")
+CHANNEL_NICHE: str = os.getenv("CHANNEL_NICHE", "politics and religion")
+CHANNEL_LANGUAGE: str = os.getenv("CHANNEL_LANGUAGE", "english")
+CHANNEL_AUDIENCE: str = os.getenv("CHANNEL_AUDIENCE", "global")
 VIDEOS_PER_WEEK: int = int(os.getenv("VIDEOS_PER_WEEK", "5"))
 
 # ── File Paths ────────────────────────────────────────────────────────────────

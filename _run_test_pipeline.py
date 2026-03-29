@@ -19,7 +19,7 @@ Total video must be 8-10 minutes long.
 Make it dramatic, use real statistics and Indian examples.
 Cover these 7 traps: EMI trap, lifestyle inflation, no emergency fund, gold obsession, FD over equity, insurance scams (endowment plans), real estate myth.
 End with actionable steps to escape the middle-class trap.
-Use hinglish naturally — mix Hindi phrases into English narration."""
+Use clear English — authoritative and engaging narration."""
 
 if __name__ == "__main__":
     init_db()

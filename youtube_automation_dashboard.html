@@ -181,11 +181,11 @@ canvas{display:block;width:100%;height:auto}
 <body>
 <div class="topbar">
   <div class="logo">&#9654;</div>
-  <div class="brand">South Asia <span>YT</span> Command Centre</div>
+  <div class="brand">Global <span>YT</span> Command Centre</div>
   <div class="version">v2.0</div>
   <div class="topbar-right">
     <span class="pill" id="api-pill" style="background:rgba(247,110,110,0.12);color:var(--red);border:1px solid rgba(247,110,110,0.3)">&#9888; No API Key</span>
-    <span class="pill pill-accent">South Asian Market</span>
+    <span class="pill pill-accent">Politics &amp; Religion</span>
   </div>
 </div>
 <div class="layout">
@@ -245,26 +245,27 @@ canvas{display:block;width:100%;height:auto}
       <div>
         <label>Niche</label>
         <select id="cfg-niche">
-          <option value="personal finance and money">Personal Finance &amp; Money</option>
+          <option value="politics and geopolitics world events">Politics &amp; Geopolitics &#127758;</option>
+          <option value="religion Islam Christianity comparative religion">Religion &amp; Comparative Religion &#9749;</option>
+          <option value="politics and religion combined">Politics + Religion Combined &#9733;</option>
+          <option value="global news and current affairs">Global News &amp; Current Affairs &#128240;</option>
+          <option value="history amazing facts and civilizations">History &amp; Ancient Civilizations &#127963;</option>
           <option value="motivation and self improvement">Motivation &amp; Self Improvement</option>
           <option value="AI technology and online earning">AI / Tech / Online Earning</option>
-          <option value="health and wellness">Health &amp; Wellness</option>
-          <option value="history and amazing facts">History &amp; Amazing Facts</option>
-          <option value="business and entrepreneurship">Business &amp; Entrepreneurship</option>
+          <option value="personal finance and money">Personal Finance &amp; Money</option>
           <option value="psychology and human behaviour">Psychology &amp; Human Behaviour</option>
-          <option value="politics geopolitics South Asia India Pakistan Middle East">Politics &amp; Geopolitics &#127758;</option>
-          <option value="global news current affairs world events">Global News &amp; Current Affairs &#127760;</option>
-          <option value="mixed finance motivation and tech">Mixed (Finance + Motivation + Tech)</option>
         </select>
       </div>
       <div>
         <label>Audience</label>
         <select id="cfg-audience">
-          <option value="India Hindi and English viewers">India &mdash; Hindi + English</option>
-          <option value="Pakistan Urdu and English viewers" selected>Pakistan &mdash; Urdu + English</option>
-          <option value="South Asia India Pakistan Bangladesh">South Asia combined</option>
-          <option value="Gulf South Asian expats UAE Saudi Qatar">Gulf expats (UAE/KSA/Qatar)</option>
-          <option value="South Asia plus Gulf diaspora combined">South Asia + Gulf &#9733; Best</option>
+          <option value="global English-speaking audience worldwide" selected>Global &#127760; (all countries)</option>
+          <option value="USA and Western audience">USA &amp; Western audience</option>
+          <option value="Muslim majority audience worldwide">Muslim world audience</option>
+          <option value="Christian audience worldwide">Christian audience worldwide</option>
+          <option value="Middle East and Arab world">Middle East &amp; Arab world</option>
+          <option value="South Asia India Pakistan Bangladesh">South Asia (India / Pakistan)</option>
+          <option value="African and diaspora audience">Africa &amp; diaspora</option>
         </select>
       </div>
     </div>
@@ -272,10 +273,12 @@ canvas{display:block;width:100%;height:auto}
       <div>
         <label>Language style</label>
         <select id="cfg-lang">
-          <option value="Hinglish casual mix of Hindi and English">Hinglish (Hindi + English)</option>
+          <option value="English clear global neutral" selected>English — global neutral</option>
+          <option value="English conversational and direct">English — conversational</option>
+          <option value="English formal documentary style">English — documentary/formal</option>
+          <option value="English with Arabic phrases">English + Arabic phrases</option>
+          <option value="English with Urdu phrases">English + Urdu phrases</option>
           <option value="Urdu with English terms">Urdu with English terms</option>
-          <option value="English with South Asian context">English, South Asian context</option>
-          <option value="Hindi formal narration">Hindi formal</option>
         </select>
       </div>
       <div>
@@ -355,7 +358,7 @@ canvas{display:block;width:100%;height:auto}
   <div class="card">
     <div class="card-title" style="margin-bottom:11px">Script generator</div>
     <label>Video topic / title</label>
-    <input type="text" id="sc-topic" placeholder="e.g. 10 paisa bachane ki aadat jo tumhe ameer banaye"/>
+    <input type="text" id="sc-topic" placeholder="e.g. Why Democracy Is Failing the World"/>
     <div class="grid2">
       <div>
         <label>Duration</label>
@@ -368,7 +371,7 @@ canvas{display:block;width:100%;height:auto}
       <div>
         <label>Style</label>
         <select id="sc-style">
-          <option value="conversational Hinglish like talking to a friend">Conversational Hinglish</option>
+          <option value="conversational Hinglish or Urdu mixing with English">Conversational Hinglish / Urdu</option>
           <option value="dramatic storytelling with suspense">Dramatic / suspenseful</option>
           <option value="educational informative clear facts">Educational &amp; factual</option>
           <option value="motivational and inspiring">Motivational</option>
@@ -387,7 +390,7 @@ canvas{display:block;width:100%;height:auto}
       </div>
       <div>
         <label>Extra context</label>
-        <input type="text" id="sc-ctx" placeholder="e.g. focus on ages 20-35 in Karachi"/>
+        <input type="text" id="sc-ctx" placeholder="e.g. focus on ages 20-40 in US and UK"/>
       </div>
     </div>
     <div style="margin-top:8px">
@@ -429,10 +432,12 @@ canvas{display:block;width:100%;height:auto}
       <div>
         <label>Target region</label>
         <select id="seo-region">
-          <option value="India YouTube Hindi English">India</option>
-          <option value="Pakistan YouTube Urdu English" selected>Pakistan</option>
-          <option value="South Asia combined">South Asia combined</option>
-          <option value="Gulf South Asian viewers">Gulf expats</option>
+          <option value="Global English YouTube" selected>Global (All regions)</option>
+          <option value="USA and Canada YouTube">USA &amp; Canada</option>
+          <option value="UK and Europe YouTube">UK &amp; Europe</option>
+          <option value="Middle East Arabic YouTube">Middle East</option>
+          <option value="South Asia India Pakistan YouTube">South Asia</option>
+          <option value="Australia and New Zealand YouTube">Australia &amp; NZ</option>
         </select>
       </div>
       <div>
@@ -669,7 +674,7 @@ canvas{display:block;width:100%;height:auto}
 <!-- ===== COST & REVENUE ===== -->
 <div id="panel-costs" class="panel">
   <div class="info-box">
-    <strong>Your situation:</strong> You run the pipeline from Europe. All costs are in USD. AdSense pays in EUR to your EU bank &mdash; no forex loss. South Asian CPM = $0.8-3, Gulf CPM = $3-12.
+    <strong>Your situation:</strong> You run the pipeline from Europe. All costs are in USD. AdSense pays in EUR to your EU bank &mdash; no forex loss. Politics/Religion CPM: US $3-8, UK/AU $4-10, Middle East $2-5, Global avg $1.5-4.
   </div>
 
   <div class="grid2">
@@ -718,7 +723,7 @@ canvas{display:block;width:100%;height:auto}
       </tbody>
     </table>
     <div class="info-box" style="margin-top:10px;margin-bottom:0">
-      <strong>Verdict:</strong> Start with <strong>5 videos/week</strong>. The ElevenLabs Indie plan ($22) covers exactly that volume. Daily posting costs $99/mo in voice alone &mdash; only worth it after month 4 when revenue covers it. Gulf viewers + finance niche can push CPM to $3-5, tripling these numbers.
+      <strong>Verdict:</strong> Start with <strong>5 videos/week</strong>. The ElevenLabs Indie plan ($22) covers exactly that volume. Daily posting costs $99/mo in voice alone &mdash; only worth it after month 4 when revenue covers it. US/UK/politics audience CPM ($4-8) can push these numbers 2-3x higher.
     </div>
   </div>
 
@@ -1302,9 +1307,9 @@ ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 PEXELS_API_KEY=...
 YOUTUBE_CLIENT_SECRETS=client_secrets.json
-CHANNEL_NICHE=personal finance
-CHANNEL_LANGUAGE=hinglish
-CHANNEL_AUDIENCE=South Asia and Gulf expats
+CHANNEL_NICHE=politics and religion
+CHANNEL_LANGUAGE=english
+CHANNEL_AUDIENCE=global
 VIDEOS_PER_WEEK=5</div>
     </div>
     <div id="code-main" style="display:none">
@@ -1326,9 +1331,9 @@ ANTHROPIC_KEY=os.getenv("ANTHROPIC_API_KEY")
 ELEVENLABS_KEY=os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID=os.getenv("ELEVENLABS_VOICE_ID","JBFqnCBsd6RMkjVDRZzb")
 PEXELS_KEY=os.getenv("PEXELS_API_KEY")
-NICHE=os.getenv("CHANNEL_NICHE","personal finance")
-LANGUAGE=os.getenv("CHANNEL_LANGUAGE","hinglish")
-AUDIENCE=os.getenv("CHANNEL_AUDIENCE","South Asia and Gulf")
+NICHE=os.getenv("CHANNEL_NICHE","politics and religion")
+LANGUAGE=os.getenv("CHANNEL_LANGUAGE","english")
+AUDIENCE=os.getenv("CHANNEL_AUDIENCE","global")
 SCOPES=["https://www.googleapis.com/auth/youtube.upload"]
 ai=anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 el=ElevenLabs(api_key=ELEVENLABS_KEY)
@@ -1449,7 +1454,7 @@ def run(topic):
     return upload(video,thumb,content)
 
 if __name__=="__main__":
-    topic=" ".join(sys.argv[1:]) if len(sys.argv)>1 else "10 paise bachane ki aadat"
+    topic=" ".join(sys.argv[1:]) if len(sys.argv)>1 else "Why Democracy Is Failing"
     run(topic)</div>
     </div>
     <div id="code-sched" style="display:none">
@@ -1459,9 +1464,9 @@ from dotenv import load_dotenv
 import anthropic
 from main import run
 load_dotenv()
-NICHE=os.getenv("CHANNEL_NICHE","personal finance")
-AUDIENCE=os.getenv("CHANNEL_AUDIENCE","South Asia and Gulf")
-LANG=os.getenv("CHANNEL_LANGUAGE","hinglish")
+NICHE=os.getenv("CHANNEL_NICHE","politics and religion")
+AUDIENCE=os.getenv("CHANNEL_AUDIENCE","global")
+LANG=os.getenv("CHANNEL_LANGUAGE","english")
 FREQ=int(os.getenv("VIDEOS_PER_WEEK",5))
 QUEUE_F="topic_queue.json"
 client=anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -1478,7 +1483,7 @@ def refill():
         messages=[{"role":"user","content":f"""
 Generate 10 trending YouTube topics for {NICHE} channel.
 Audience:{AUDIENCE}. Language:{LANG}.
-Return ONLY a JSON array of strings. Mix Hinglish and English.
+Return ONLY a JSON array of strings.
 Make them clickable and searchable."""}])
     raw=msg.content[0].text
     new=json.loads(raw[raw.index("["):raw.rindex("]")+1])
@@ -1497,7 +1502,7 @@ def publish_next():
         print(f"Error: {e}")
         q.insert(0,topic);save_q(q)
 
-# 14:00 UTC = 7:30 PM IST = 7 PM PKT - peak South Asian traffic
+# 14:00 UTC = global peak engagement window (US morning, EU afternoon)
 if FREQ>=7:schedule.every().day.at("14:00").do(publish_next)
 elif FREQ>=5:
     for d in["monday","tuesday","wednesday","thursday","friday"]:
@@ -1514,10 +1519,11 @@ while True:
     </div>
     <div id="code-voice" style="display:none">
       <div class="card-header" style="margin-bottom:7px"><span style="font-size:10px;color:var(--muted)">voice_config.py</span><button class="copy-btn" onclick="copyById('voice-t',this)">Copy</button></div>
-      <div class="code-box" id="voice-t"># ElevenLabs voice IDs for South Asian content:
+      <div class="code-box" id="voice-t"># ElevenLabs voice IDs for global English content:
 # JBFqnCBsd6RMkjVDRZzb  George  - clear English, authoritative
 # TX3LPaxmHKxFdv7VOQHJ  Liam    - young, energetic
 # pNInz6obpgDQGcFmaJgB  Adam    - deep, serious
+# nPczCjzI2devNBz1zQrb  Brian   - calm, professional (documentary style)
 # Custom: upload 30min voice sample to ElevenLabs to clone
 
 def get_voice_settings():
@@ -2036,7 +2042,7 @@ services:
         <div class="s-step"><span class="s-step-num">3</span><span>Copy the API key shown there</span></div>
         <div class="s-step"><span class="s-step-num">4</span><span>For voice ID: go to <strong>Voice Library</strong> &rarr; click a voice &rarr; copy the ID from the URL or Details panel</span></div>
         <div class="s-step"><span class="s-step-num">5</span><span><strong>Recommended plan:</strong> Indie at $22/month covers 22 videos/month (100K chars)</span></div>
-        <div style="margin-top:8px;padding:8px 10px;background:rgba(247,194,78,0.06);border-radius:6px;font-size:11px;color:var(--muted)">&#127897; Tip: Clone a custom South Asian voice by uploading 30 min of clear audio in ElevenLabs Voice Lab. Costs 1 voice slot (included in paid plans).</div>
+        <div style="margin-top:8px;padding:8px 10px;background:rgba(247,194,78,0.06);border-radius:6px;font-size:11px;color:var(--muted)">&#127897; Tip: Clone a custom voice by uploading 30 min of clear audio in ElevenLabs Voice Lab. Costs 1 voice slot (included in paid plans).</div>
       </div>
     </div>
   </div>
@@ -2106,7 +2112,7 @@ services:
     </div>
   </div>
   <label>Channel description <span style="color:var(--muted);font-weight:400">(appended to every video description)</span></label>
-  <textarea id="cfg-desc" placeholder="e.g. South Asia ka #1 finance channel..." oninput="markDirty()"></textarea>
+  <textarea id="cfg-desc" placeholder="e.g. #1 global politics &amp; religion channel..." oninput="markDirty()"></textarea>
   <div class="grid2">
     <div>
       <label>CPM estimate <span style="color:var(--muted);font-weight:400">(for revenue calculations)</span></label>
@@ -2563,28 +2569,28 @@ async function getTrending(filter,btnEl){
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   var searchQuery, fn, typeHint;
   if(filter==='viral'){
-    fn='Viral, high-shock, emotionally charged topics — maximum click-through for South Asian audience.';
-    searchQuery='viral YouTube trending topics India Pakistan March 2026';
+    fn='Viral, high-shock, emotionally charged topics — maximum click-through for global audience.';
+    searchQuery='viral YouTube trending topics politics religion world news March 2026';
     typeHint='Viral';
   }else if(filter==='evergreen'){
     fn='Evergreen long-tail topics that get consistent search traffic year-round.';
-    searchQuery='top evergreen YouTube topics '+getNiche()+' South Asia 2026';
+    searchQuery='top evergreen YouTube topics '+getNiche()+' global 2026';
     typeHint='Evergreen';
   }else if(filter==='news'){
-    fn='Breaking news and current events this week for South Asian audience.';
-    searchQuery='latest news India Pakistan Middle East 22 March 2026';
+    fn='Breaking news and current events this week — global politics, religion, geopolitics.';
+    searchQuery='latest world news politics religion geopolitics March 2026 trending';
     typeHint='News';
   }else if(filter==='politics'){
-    fn='Politics, geopolitics, elections, military, India-Pakistan, Middle East, US — controversial high-engagement.';
-    searchQuery='India Pakistan politics geopolitics news March 2026 trending';
+    fn='Politics, geopolitics, elections, wars, world leaders — high-engagement global controversies.';
+    searchQuery='world politics geopolitics elections war trending YouTube March 2026';
     typeHint='Politics';
   }else if(filter==='global'){
-    fn='Global trending events — wars, economy, climate, AI, world leaders — that South Asian diaspora cares about.';
-    searchQuery='global news world events trending viral March 2026';
+    fn='Global trending events — wars, economy, religion, AI, world leaders — that worldwide audience is watching.';
+    searchQuery='global news world events trending viral politics religion March 2026';
     typeHint='Global';
   }else{
-    fn='Most watched topics on YouTube right now by South Asian viewers — any niche.';
-    searchQuery='trending YouTube South Asia India Pakistan viral March 22 2026';
+    fn='Most watched topics on YouTube right now globally — politics, religion, current affairs.';
+    searchQuery='trending YouTube worldwide politics religion viral March 2026';
     typeHint='Trending';
   }
 
@@ -2692,7 +2698,7 @@ async function getViralAudio(){
   setBtn('audio-btn','audio-icon','&#127925;',true);
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   var prompt='TODAY is '+today+'. Use the web_search tool NOW. Do NOT use training data.\n'
-    +'Search: "viral trending audio sounds YouTube Shorts South Asian creators '+today+'"\n'
+    +'Search: "viral trending audio sounds YouTube Shorts global politics religion creators '+today+'"\n'
     +'Return ONLY JSON array of 6 items (no markdown):\n'
     +'[{"name":"track name","artist":"artist","why_viral":"real reason from search","content_fit":"video type","trend_score":"Hot|Rising|Steady"}]';
 
@@ -2733,13 +2739,13 @@ async function writeScript(){
       '\nDuration: '+document.getElementById('sc-dur').value+'\n'+
       (transcript?'Kamil already recorded this: "'+transcript.slice(0,300)+'"\n':'')+
       (guidance?'\n--- CREATOR INSTRUCTIONS (follow these carefully) ---\n'+guidance+'\n---\n':'')+
-      '\nFormat EXACTLY:\n[KAMIL INTRO -- 0:00]\n(60-90 sec shocking hook, Kamil speaks to camera in Hinglish)\nHis exact words...\n\n'+
+      '\nFormat EXACTLY:\n[KAMIL INTRO -- 0:00]\n(60-90 sec shocking hook, Kamil speaks to camera in Urdu)\nHis exact words...\n\n'+
       '[AI NARRATOR -- 1:30]\n(Factual expansion over stock footage)\nNarration...\n\n'+
       '[KAMIL REACTION -- 4:00]\n(30-45 sec Kamil reacts to key stat)\nHis words...\n\n'+
       '[AI NARRATOR -- 4:45]\nContinued narration...\n\n'+
       '[KAMIL OUTRO -- 9:00]\n(30 sec subscribe CTA)\nHis words...\n\n'+
       '---\nTHUMBNAIL SHOT:\n  Expression: SHOCK / CONCERN\n  5 sec still, direct eye contact, dark background\n\n'+
-      'Rules: Kamil lines in natural Hinglish. AI lines factual & punchy. Min 6 sections.';
+      'Rules: Kamil lines in natural Urdu (his channel targets Urdu/Hindi speakers). AI lines factual & punchy. Min 6 sections.';
   }else{
     prompt='Write a complete YouTube video narration script.\n\nTopic: "'+topic+'"\nAudience: '+getAud()+
       '\nLanguage: '+getLang()+'\nDuration: '+document.getElementById('sc-dur').value+
@@ -2748,7 +2754,7 @@ async function writeScript(){
       (ctx?'\nContext: '+ctx:'')+
       (guidance?'\n\n--- CREATOR INSTRUCTIONS (follow these carefully) ---\n'+guidance+'\n---':'') +
       '\n\nFormat:\n[HOOK - 0:00]\n(30 sec)\ntext...\n\n[SEGMENT 1 - title]\ntext...\n\n[OUTRO]\ntext...\n\n'+
-      'Rules: Short punchy sentences. Use '+getLang()+' naturally (yaar, suno, dekho). Tease the big reveal. 2-3 real stats. Each segment ends with curiosity hook.';
+      'Rules: Short punchy sentences. Use '+getLang()+' naturally. Tease the big reveal. 2-3 real stats. Each segment ends with curiosity hook.';
   }
   var s=await claude(prompt,1800,false,_HAIKU);
   if(s){
@@ -2852,11 +2858,11 @@ async function generateSEO(){
   var input=override||(script&&script.length>30?script:'Topic: '+topic+'\nNiche: '+getNiche()+'\nAudience: '+getAud());
   if(!input&&!topic&&!getNiche()){alert('Enter a topic in Script Writer first, or manually type context in the override field.');return;}
   setBtn('seo-btn','seo-icon','&#128269;',true);
-  var prompt='YouTube SEO for South Asian market. Platform: '+document.getElementById('seo-region').value+
+  var prompt='YouTube SEO for global English audience. Platform: '+document.getElementById('seo-region').value+
     '. Category: '+document.getElementById('seo-cat').value+
     '. Content: '+input.slice(0,1200)+
     '\nReturn ONLY valid JSON:\n{"titles":["power word title","question title","bold claim title"],'+
-    '"description":"2 paragraphs+timestamps+6 hashtags (mix English/Urdu)",'+
+    '"description":"2 paragraphs+timestamps+6 hashtags (English)",'+
     '"tags":["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],'+
     '"thumbnail_options":["OPT1","OPT2","OPT3"],"best_upload_time":"time+reason","chapters":"00:00 Intro\\n01:30 Point1..."}';
   var raw=await claude(prompt,1000,false,_HAIKU);
@@ -3651,8 +3657,8 @@ function exportEnvFile(){
     'ELEVENLABS_VOICE_ID='+(s.voiceId||'JBFqnCBsd6RMkjVDRZzb')+'\n\n'+
     '# Pexels Stock Images\nPEXELS_API_KEY='+(s.pexels||'...')+'\n\n'+
     '# YouTube OAuth\nYOUTUBE_CLIENT_SECRETS='+(s.ytSecretsPath||'./client_secrets.json')+'\n\n'+
-    '# Channel config\nCHANNEL_NICHE=personal finance\n'+
-    'CHANNEL_LANGUAGE=hinglish\nCHANNEL_AUDIENCE=South Asia and Gulf expats\n'+
+    '# Channel config\nCHANNEL_NICHE=politics and religion\n'+
+    'CHANNEL_LANGUAGE=english\nCHANNEL_AUDIENCE=global\n'+
     'VIDEOS_PER_WEEK='+(s.freq||5)+'\n'+
     'DEFAULT_VISIBILITY='+(s.ytVis||'public')+'\n'+
     'YOUTUBE_CATEGORY_ID='+(s.ytCategory||'22')+'\n\n'+
@@ -3662,7 +3668,7 @@ function exportEnvFile(){
     'VOICE_STYLE='+(s.voiceStyle||'0.35')+'\n\n'+
     '# TTS Provider (edge | elevenlabs | gtts)\n'+
     'TTS_PROVIDER='+((document.getElementById('cfg-tts-provider')||{}).value||'edge')+'\n'+
-    'EDGE_TTS_VOICE='+((document.getElementById('cfg-edge-voice')||{}).value||'hi-IN-MadhurNeural')+'\n';
+    'EDGE_TTS_VOICE='+((document.getElementById('cfg-edge-voice')||{}).value||'en-US-ChristopherNeural')+'\n';
   var a = document.createElement('a');
   a.href = 'data:text/plain;charset=utf-8,'+encodeURIComponent(content);
   a.download = '.env';
@@ -3837,7 +3843,7 @@ async function aiThumb(){
   var topic=document.getElementById('sc-topic').value.trim()||document.getElementById('t-line1').value;
   if(!topic){alert('Enter a topic in Script Writer first.');return;}
   setBtn('ai-t-btn','ai-t-icon','&#9889;',true);
-  var raw=await claude('YouTube thumbnail text for South Asian geopolitics/finance channel.\nTopic: "'+topic+'"\nReturn JSON only: {"line1":"5-6 word ALL CAPS shock","line2":"3-4 word ALL CAPS","badge":"EXCLUSIVE or BREAKING or REVEALED","expr":"emotion for face photo e.g. SHOCK, CONCERN, CONFIDENCE"}',400,false,_HAIKU);
+  var raw=await claude('YouTube thumbnail text for global politics/religion channel.\nTopic: "'+topic+'"\nReturn JSON only: {"line1":"5-6 word ALL CAPS shock","line2":"3-4 word ALL CAPS","badge":"EXCLUSIVE or BREAKING or REVEALED","expr":"emotion for face photo e.g. SHOCK, CONCERN, CONFIDENCE"}',400,false,_HAIKU);
   if(raw){
     try{
       var d=parseJSON(raw,'{');

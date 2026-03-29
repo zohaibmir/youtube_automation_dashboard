@@ -44,7 +44,7 @@ Return ONLY valid JSON with these exact keys:
   "thumbnail_subtext": "3-4 words",
   "badge": "EXCLUSIVE",
   "channel_name": "KamilMir",
-  "kamil_intro_script": "Exact words for Kamil. 60-90 sec. Shocking hook in Hinglish.",
+  "kamil_intro_script": "Exact words for Kamil. 60-90 sec. Shocking hook in Urdu.",
   "kamil_outro_script": "30-sec subscribe CTA from Kamil.",
   "segments": [
     {{"speaker": "KAMIL", "text": "his lines", "duration_s": 80, "visual": "Kamil full screen", "caption": "caption"}},
