@@ -40,3 +40,6 @@ build/
 *.swp
 *.swo
 .pipeline.lock
+runs/
+.jobs/
+*TEMP_MPY*
