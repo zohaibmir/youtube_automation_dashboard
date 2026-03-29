@@ -2356,6 +2356,124 @@ services:
 input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:var(--bg4);margin:0;padding:0;border:none;cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer}
 </style>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PANEL: YouTube Automation
+══════════════════════════════════════════════════════════════ -->
+<div id="panel-yt-automation" class="panel">
+<div style="max-width:640px">
+
+  <!-- Panel header -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+    <div style="width:38px;height:38px;background:linear-gradient(135deg,rgba(124,109,250,0.3),rgba(61,219,160,0.18));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;border:1px solid rgba(124,109,250,0.2)">&#128640;</div>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:700">YouTube Automation</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:1px">Post-upload features that run after every video is published</div>
+    </div>
+    <span id="yta-save-indicator" style="font-size:11px;color:var(--green)"></span>
+    <button class="btn btn-primary btn-sm" onclick="saveYtAutomation()">&#128190; Save</button>
+  </div>
+
+  <!-- CARD: Auto Chapters -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:11px;padding:12px 14px">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(61,219,160,0.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#128203;</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700">Auto Chapters</span>
+          <span id="yta-chapters-badge" style="background:rgba(61,219,160,0.12);color:var(--teal);border:1px solid rgba(61,219,160,0.25);padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700">Enabled</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Injects chapter timestamps into the description before upload.</div>
+      </div>
+      <label class="yta-toggle" style="flex-shrink:0">
+        <input type="checkbox" id="yta-auto-chapters" checked onchange="onYtaToggle('chapters',this)">
+        <span class="yta-slider"></span>
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding:11px 14px;background:rgba(0,0,0,0.18)">
+      <div style="font-size:11px;color:var(--muted);line-height:1.65;margin-bottom:9px">Computes each chapter start time from segment audio durations. No extra API calls or permissions required.</div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 12px;font-size:11px;color:var(--muted);line-height:1.9;border-left:3px solid rgba(61,219,160,0.5)">
+        <strong style="color:var(--text);display:block;margin-bottom:3px">&#128198; Example output:</strong>
+        <code style="color:var(--teal);font-size:11px">CHAPTERS<br>0:00 The Barefoot Prophecy<br>0:41 Great Fire in Hejaz<br>1:07 Rivers of Blood<br>1:34 The Return of the Caliphate</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD: Pin First Comment -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:11px;padding:12px 14px">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(124,109,250,0.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#128204;</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700">Pin First Comment</span>
+          <span id="yta-pin-badge" style="background:rgba(61,219,160,0.12);color:var(--teal);border:1px solid rgba(61,219,160,0.25);padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700">Enabled</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Posts &amp; pins a subscribe CTA comment immediately after upload.</div>
+      </div>
+      <label class="yta-toggle" style="flex-shrink:0">
+        <input type="checkbox" id="yta-pin-comment" checked onchange="onYtaToggle('pin',this)">
+        <span class="yta-slider"></span>
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding:11px 14px;background:rgba(0,0,0,0.18)">
+      <div style="font-size:11px;color:var(--muted);line-height:1.65;margin-bottom:10px">Pinned comments appear above all others &#8212; high impact in the first 48h. Requires full <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">youtube</code> OAuth scope; pin failures never block the upload.</div>
+      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:6px">Pinned comment text</label>
+      <textarea id="yta-pin-text" rows="4" oninput="markDirty()" style="width:100%;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 11px;color:var(--text);line-height:1.65">&#11015;&#65039; WATCH NEXT &#8212; more prophecies &amp; signs unfolding RIGHT NOW
+&#128276; Subscribe &amp; hit the bell so you never miss a sign
+&#128172; Share this with someone who needs to see it</textarea>
+      <div style="font-size:10px;color:var(--dim);margin-top:5px">Leave blank to auto-generate from channel name.</div>
+    </div>
+  </div>
+
+  <!-- CARD: Auto End Screens -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:11px;padding:12px 14px">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(247,110,110,0.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#127381;</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700">Auto End Screens</span>
+          <span id="yta-endscreens-badge" style="background:rgba(61,219,160,0.12);color:var(--teal);border:1px solid rgba(61,219,160,0.25);padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700">Enabled</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Burns a subscribe circle + watch-next box into the last 20s of every video.</div>
+      </div>
+      <label class="yta-toggle" style="flex-shrink:0">
+        <input type="checkbox" id="yta-end-screens" checked onchange="onYtaToggle('endscreens',this)">
+        <span class="yta-slider"></span>
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding:11px 14px;background:rgba(0,0,0,0.18)">
+      <div style="font-size:11px;color:var(--muted);line-height:1.65;margin-bottom:9px">Rendered directly into the video file &#8212; no API calls needed. The final 20 seconds show a red subscribe circle, channel name, and a watch-next placeholder. Replaces the plain outro when enabled.</div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 12px;border-left:3px solid rgba(247,110,110,0.5);font-size:11px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--text);display:block;margin-bottom:4px">&#127775; What gets burned in:</strong>
+        <div>&#9679; <strong style="color:var(--text)">Left</strong> &#8212; Watch Next box with play icon</div>
+        <div>&#9679; <strong style="color:var(--text)">Right</strong> &#8212; Red SUBSCRIBE circle + channel name</div>
+        <div>&#9679; <strong style="color:var(--text)">Header</strong> &#8212; &ldquo;Thanks for watching!&rdquo;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API scope summary -->
+  <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.18);border-radius:9px;padding:11px 14px">
+    <div style="font-weight:700;color:var(--amber);margin-bottom:8px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">&#9888;&#65039; API scope</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128203; Chapters</div>
+        <div style="color:var(--muted);line-height:1.55">No extra scope &#8212; injected before upload.</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128204; Pin Comment</div>
+        <div style="color:var(--muted);line-height:1.55">Full <code style="background:var(--bg4);padding:1px 3px;border-radius:3px">youtube</code> scope. Re-auth if needed.</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#127381; End Screens</div>
+        <div style="color:var(--muted);line-height:1.55">No API &#8212; burned into video during encoding.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
 </div>
 
 </div></div>
@@ -5110,96 +5228,10 @@ function uploadToSocialPlatforms(){
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     PANEL: YouTube Automation
-══════════════════════════════════════════════════════════════ -->
-<div id="panel-yt-automation" class="panel">
-<div style="max-width:720px">
-
-  <!-- Panel header -->
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <div style="width:40px;height:40px;background:linear-gradient(135deg,rgba(124,109,250,0.25),rgba(61,219,160,0.15));border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">&#128640;</div>
-    <div>
-      <div style="font-size:14px;font-weight:700;letter-spacing:-0.2px">YouTube Automation</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:1px">Post-upload features that run after every video is published</div>
-    </div>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
-      <span id="yta-save-indicator" style="font-size:11px;color:var(--green)"></span>
-      <button class="btn btn-primary btn-sm" onclick="saveYtAutomation()">&#128190; Save</button>
     </div>
   </div>
-
-  <!-- FEATURE: Auto Chapters -->
-  <div class="s-card" style="margin-bottom:10px">
-    <div class="s-card-header" style="padding:14px 15px">
-      <div class="s-logo" style="background:rgba(61,219,160,0.12);color:var(--teal);font-size:17px">&#128203;</div>
-      <div class="s-info">
-        <div class="s-name" style="justify-content:space-between">
-          <span style="display:flex;align-items:center;gap:7px">
-            Auto Chapters
-            <span id="yta-chapters-badge" class="s-badge" style="background:rgba(61,219,160,0.12);color:var(--teal);border:1px solid rgba(61,219,160,0.25)">Enabled</span>
-          </span>
-          <label class="yta-toggle">
-            <input type="checkbox" id="yta-auto-chapters" checked onchange="onYtaToggle('chapters',this)">
-            <span class="yta-slider"></span>
-          </label>
-        </div>
-        <div class="s-desc" style="margin-top:4px">Injects chapter timestamps into the video description &#8212; YouTube promotes videos with chapters, boosting average watch time.</div>
-      </div>
-    </div>
-    <div class="s-body" style="padding:12px 15px 13px">
-      <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:10px">Computes each chapter start time from segment audio durations and appends them to the description before upload. No extra API calls or permissions required.</div>
-      <div style="background:var(--bg3);border-radius:7px;padding:9px 12px;font-size:11px;color:var(--muted);line-height:1.9;border-left:3px solid rgba(61,219,160,0.4)">
-        <strong style="color:var(--text);display:block;margin-bottom:2px">&#128198; Example description output:</strong>
-        <code style="color:var(--teal)">CHAPTERS<br>0:00 The Barefoot Prophecy<br>0:41 Great Fire in Hejaz<br>1:07 Rivers of Blood<br>1:34 The Return of the Caliphate</code>
-      </div>
-    </div>
-  </div>
-
-  <!-- FEATURE: Pin First Comment -->
-  <div class="s-card" style="margin-bottom:16px">
-    <div class="s-card-header" style="padding:14px 15px">
-      <div class="s-logo" style="background:rgba(124,109,250,0.12);color:var(--accent);font-size:17px">&#128204;</div>
-      <div class="s-info">
-        <div class="s-name" style="justify-content:space-between">
-          <span style="display:flex;align-items:center;gap:7px">
-            Pin First Comment
-            <span id="yta-pin-badge" class="s-badge" style="background:rgba(61,219,160,0.12);color:var(--teal);border:1px solid rgba(61,219,160,0.25)">Enabled</span>
-          </span>
-          <label class="yta-toggle">
-            <input type="checkbox" id="yta-pin-comment" checked onchange="onYtaToggle('pin',this)">
-            <span class="yta-slider"></span>
-          </label>
-        </div>
-        <div class="s-desc" style="margin-top:4px">Posts a subscribe CTA comment immediately after upload and pins it to the top of the comment section.</div>
-      </div>
-    </div>
-    <div class="s-body" style="padding:12px 15px 13px">
-      <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:12px">Pinned comments drive subscriptions in the critical first 48-hour window. Requires the full <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">youtube</code> OAuth scope &#8212; if the pin fails the upload still succeeds.</div>
-      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:6px">Pinned comment text</label>
-      <textarea id="yta-pin-text" rows="4" oninput="markDirty()" style="width:100%;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 11px;color:var(--text);line-height:1.65">&#11015;&#65039; WATCH NEXT &#8212; more prophecies &amp; signs unfolding RIGHT NOW
-&#128276; Subscribe &amp; hit the bell so you never miss a sign
-&#128172; Share this with someone who needs to see it</textarea>
-      <div style="font-size:10px;color:var(--dim);margin-top:5px">Leave blank to auto-generate the CTA from your channel name.</div>
-    </div>
-  </div>
-
-  <!-- API Scope note -->
-  <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.18);border-radius:9px;padding:12px 14px">
-    <div style="font-weight:700;color:var(--amber);margin-bottom:8px;font-size:11px;letter-spacing:0.03em">&#9888;&#65039; API SCOPE REQUIREMENTS</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;font-size:11px">
-        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128203; Auto Chapters</div>
-        <div style="color:var(--muted);line-height:1.6">No extra permissions needed. Chapters are appended to the description <em>before</em> upload &#8212; zero additional API calls.</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;font-size:11px">
-        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128204; Pin First Comment</div>
-        <div style="color:var(--muted);line-height:1.6">Requires full <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">youtube</code> scope. Re-authenticate via <strong>Settings &#8594; YouTube Channels</strong> if needed. Fails gracefully.</div>
-      </div>
-    </div>
-  </div>
-
 </div>
+
 </div>
 
 </body>
