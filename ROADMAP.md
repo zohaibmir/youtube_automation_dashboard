@@ -36,6 +36,7 @@ Target: India + Global English (South Asian diaspora, Muslim audience)
 | Analytics dashboard | `southasian_youtube_dashboard.html` | SQLite-backed |
 | SEO-optimised title/description/tags | `content_generator.py` | Claude-generated |
 | CRF 23 / fast preset encoding | `video_builder.py` | ✅ Just fixed — ~200MB output |
+| Reddit auto-post (PRAW, link submissions) | `reddit_poster.py` + `pipeline.py` | ✅ Just added — r/IslamicProphecy, r/conspiracy, r/EndTimes, r/india + configurable subreddits |
 | YouTube Chapters (auto timestamps) | `pipeline.py` | ✅ Just added — injected before upload |
 | Pin First Comment (subscribe CTA) | `youtube_uploader.py` + `pipeline.py` | ✅ Just added — pinned after every upload |
 | YouTube Automation settings tab | `youtube_automation_dashboard.html` | ✅ Just added — toggle on/off per feature |
@@ -75,8 +76,7 @@ Target: India + Global English (South Asian diaspora, Muslim audience)
 
 ### 4. Reddit Auto-Post After Upload
 **Impact:** Free traffic. r/IslamicProphecy, r/conspiracy, r/EndTimes, r/india have millions of subs.
-**What's needed:** `reddit_poster.py` using PRAW library. Post title + YouTube link after each upload.
-**Effort:** Medium — PRAW is straightforward, needs Reddit API credentials.
+**Status:** ✅ Done. `reddit_poster.py` uses PRAW to submit a link post to each configured subreddit after upload. Credentials in `.env`; subreddits + flair configurable from the YT Automation settings tab.
 
 ---
 
@@ -132,9 +132,9 @@ These must be done in YouTube Studio manually:
 | ~~1~~ | ~~YouTube Chapters auto-inject~~ | ~~1 session~~ | ~~HIGH — watch time~~ ✅ |
 | ~~2~~ | ~~Pin first comment after upload~~ | ~~1 session~~ | ~~HIGH — engagement~~ ✅ |
 | ~~3~~ | ~~Auto end screens~~ | ~~1 session~~ | ~~HIGH — retention~~ ✅ |
+| ~~4~~ | ~~Reddit auto-post~~ | ~~2 sessions~~ | ~~MEDIUM — free traffic~~ ✅ |
 | 4 | Telegram broadcast post | 1 session | HIGH — free traffic |
 | 4 | Wire social upload into pipeline | 1 session | HIGH — distribution |
 | 5 | Dashboard running jobs panel | 1 session | MEDIUM — ops |
-| 6 | Reddit auto-post | 2 sessions | MEDIUM — free traffic |
 
 ---

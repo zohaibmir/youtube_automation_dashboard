@@ -500,6 +500,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "pinComment":        "PIN_FIRST_COMMENT",
                 "pinnedCommentText": "PINNED_COMMENT_TEXT",
                 "autoEndScreens":    "AUTO_END_SCREENS",
+                # Reddit distribution
+                "redditEnabled":     "REDDIT_ENABLED",
+                "redditSubreddits":  "REDDIT_SUBREDDITS",
+                "redditFlair":       "REDDIT_POST_FLAIR",
             }
             updated = []
             for js_key, env_key in env_map.items():

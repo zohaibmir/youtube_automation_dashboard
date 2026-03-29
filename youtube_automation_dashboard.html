@@ -2452,10 +2452,45 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
     </div>
   </div>
 
+  <!-- CARD: Reddit Auto-Post -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:11px;padding:12px 14px">
+      <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,87,0,0.12);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">&#128038;</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700">Reddit Auto-Post</span>
+          <span id="yta-reddit-badge" style="background:rgba(247,110,110,0.08);color:var(--red);border:1px solid rgba(247,110,110,0.3);padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700">Disabled</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Submits the YouTube link to Reddit communities after every upload.</div>
+      </div>
+      <label class="yta-toggle" style="flex-shrink:0">
+        <input type="checkbox" id="yta-reddit-enabled" onchange="onYtaToggle('reddit',this)">
+        <span class="yta-slider"></span>
+      </label>
+    </div>
+    <div style="border-top:1px solid var(--border);padding:11px 14px;background:rgba(0,0,0,0.18)">
+      <div style="font-size:11px;color:var(--muted);line-height:1.65;margin-bottom:12px">Posts a link submission to each subreddit listed below. Failures per-subreddit are silently skipped &#8212; a bad sub never blocks the upload. Requires PRAW credentials in <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">.env</code>.</div>
+
+      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:5px">Subreddits <span style="font-weight:400;color:var(--muted)">(comma-separated, without r/)</span></label>
+      <input type="text" id="yta-reddit-subs" oninput="markDirty()" placeholder="IslamicProphecy,conspiracy,EndTimes,india"
+        style="width:100%;font-size:12px;font-family:inherit;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 11px;color:var(--text)">
+
+      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-top:10px;margin-bottom:5px">Post flair <span style="font-weight:400;color:var(--muted)">(optional &#8212; partial match against available flairs)</span></label>
+      <input type="text" id="yta-reddit-flair" oninput="markDirty()" placeholder="e.g. Video"
+        style="width:100%;font-size:12px;font-family:inherit;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 11px;color:var(--text)">
+
+      <div style="margin-top:12px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--amber);display:block;margin-bottom:3px">&#128274; Credentials must be set in <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">.env</code></strong>
+        <code style="color:var(--dim);font-size:10.5px;line-height:2">REDDIT_CLIENT_ID=…<br>REDDIT_CLIENT_SECRET=…<br>REDDIT_USERNAME=…<br>REDDIT_PASSWORD=…</code>
+        <div style="margin-top:4px">Get credentials at <span style="color:var(--teal)">reddit.com/prefs/apps</span> &#8212; create a <em>script</em> app.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- API scope summary -->
   <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.18);border-radius:9px;padding:11px 14px">
     <div style="font-weight:700;color:var(--amber);margin-bottom:8px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">&#9888;&#65039; API scope</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
       <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
         <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128203; Chapters</div>
         <div style="color:var(--muted);line-height:1.55">No extra scope &#8212; injected before upload.</div>
@@ -2467,6 +2502,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
       <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
         <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#127381; End Screens</div>
         <div style="color:var(--muted);line-height:1.55">No API &#8212; burned into video during encoding.</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;font-size:11px">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">&#128038; Reddit</div>
+        <div style="color:var(--muted);line-height:1.55">PRAW OAuth &#8212; script-type Reddit app credentials.</div>
       </div>
     </div>
   </div>
@@ -3805,7 +3844,7 @@ function exportEnvFile(){
 
 // ---- YouTube Automation features ----
 function onYtaToggle(feature, cb){
-  var idMap={chapters:'yta-chapters-badge',pin:'yta-pin-badge',endscreens:'yta-endscreens-badge'};
+  var idMap={chapters:'yta-chapters-badge',pin:'yta-pin-badge',endscreens:'yta-endscreens-badge',reddit:'yta-reddit-badge'};
   var badge=document.getElementById(idMap[feature]||'');
   if(badge){
     badge.textContent=cb.checked?'Enabled':'Disabled';
@@ -3821,7 +3860,10 @@ function saveYtAutomation(){
     autoChapters:      document.getElementById('yta-auto-chapters').checked  ? 'true':'false',
     pinComment:        document.getElementById('yta-pin-comment').checked    ? 'true':'false',
     autoEndScreens:    document.getElementById('yta-end-screens').checked    ? 'true':'false',
-    pinnedCommentText: (document.getElementById('yta-pin-text').value||'').trim()
+    pinnedCommentText: (document.getElementById('yta-pin-text').value||'').trim(),
+    redditEnabled:     document.getElementById('yta-reddit-enabled').checked  ? 'true':'false',
+    redditSubreddits:  (document.getElementById('yta-reddit-subs').value||'').trim(),
+    redditFlair:       (document.getElementById('yta-reddit-flair').value||'').trim()
   };
   _dbSave('yt_automation', s);
   fetch('/api/settings/sync-env',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)})
@@ -3837,9 +3879,10 @@ function saveYtAutomation(){
 function loadYtAutomation(s){
   if(!s) return;
   var loads=[
-    {key:'autoChapters',   id:'yta-auto-chapters', feat:'chapters'},
-    {key:'pinComment',     id:'yta-pin-comment',   feat:'pin'},
-    {key:'autoEndScreens', id:'yta-end-screens',   feat:'endscreens'}
+    {key:'autoChapters',   id:'yta-auto-chapters',   feat:'chapters'},
+    {key:'pinComment',     id:'yta-pin-comment',     feat:'pin'},
+    {key:'autoEndScreens', id:'yta-end-screens',     feat:'endscreens'},
+    {key:'redditEnabled',  id:'yta-reddit-enabled',  feat:'reddit'}
   ];
   loads.forEach(function(l){
     if(s[l.key]!==undefined){
@@ -3850,6 +3893,8 @@ function loadYtAutomation(s){
     }
   });
   if(s.pinnedCommentText) document.getElementById('yta-pin-text').value=s.pinnedCommentText;
+  if(s.redditSubreddits)  document.getElementById('yta-reddit-subs').value=s.redditSubreddits;
+  if(s.redditFlair)       document.getElementById('yta-reddit-flair').value=s.redditFlair;
 }
 
 // ---- TTS Provider ----

@@ -19,7 +19,7 @@ import subprocess
 import uuid
 
 from audio_generator import generate_audio_segments
-from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME
+from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _RUNS_DIR = os.path.join(_BASE_DIR, "runs")          # runs/<job_id>/ per-run workdirs
@@ -35,6 +35,7 @@ from thumbnail import make_thumbnail
 from video_builder import build_video
 from visual_fetcher import fetch_segment_images, fetch_segment_videos
 from youtube_uploader import upload_video, pin_first_comment
+from reddit_poster import post_to_reddit
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +399,18 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                    f"💬 Share this with someone who needs to see it"
             )
             pin_first_comment(youtube_id, comment, channel_slug=channel_slug)
+
+        # Step 9 — Reddit auto-post (if enabled)
+        if REDDIT_ENABLED and youtube_id:
+            yt_url = f"https://youtube.com/watch?v={youtube_id}"
+            reddit_urls = post_to_reddit(
+                title=content["title"],
+                youtube_url=yt_url,
+                subreddits_csv=REDDIT_SUBREDDITS,
+                flair=REDDIT_POST_FLAIR or None,
+            )
+            if reddit_urls:
+                logger.info("[job=%s] Reddit: posted to %d subreddit(s)", job_id, len(reddit_urls))
 
         logger.info("[job=%s] Pipeline complete: https://youtube.com/watch?v=%s", job_id, youtube_id)
         return youtube_id

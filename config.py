@@ -70,6 +70,19 @@ OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
 # Outro CTA text shown in the end card
 OUTRO_CTA_TEXT: str = os.getenv("OUTRO_CTA_TEXT", "LIKE · SUBSCRIBE · SHARE")
 
+# ── Reddit Distribution ──────────────────────────────────────────────────────
+# Enable auto-posting to Reddit after each upload
+REDDIT_ENABLED: bool = os.getenv("REDDIT_ENABLED", "false").lower() in ("true", "1", "yes")
+# Reddit API credentials — set these in .env, NOT via the dashboard
+REDDIT_CLIENT_ID: str = os.getenv("REDDIT_CLIENT_ID", "")
+REDDIT_CLIENT_SECRET: str = os.getenv("REDDIT_CLIENT_SECRET", "")
+REDDIT_USERNAME: str = os.getenv("REDDIT_USERNAME", "")
+REDDIT_PASSWORD: str = os.getenv("REDDIT_PASSWORD", "")
+# Comma-separated list of subreddit names (without r/)
+REDDIT_SUBREDDITS: str = os.getenv("REDDIT_SUBREDDITS", "IslamicProphecy,conspiracy,EndTimes,india")
+# Optional flair text — matched against available flairs (partial, case-insensitive)
+REDDIT_POST_FLAIR: str = os.getenv("REDDIT_POST_FLAIR", "")
+
 # ── YouTube Automation Features ──────────────────────────────────────────────
 # Automatically inject chapter timestamps into video description before upload
 AUTO_CHAPTERS: bool = os.getenv("AUTO_CHAPTERS", "true").lower() in ("true", "1", "yes")
