@@ -200,6 +200,7 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('tracker',this)"><span class="nav-icon">&#128202;</span>Performance</button>
   <button class="nav-item" onclick="navTo('costs',this)"><span class="nav-icon">&#128176;</span>Cost &amp; Revenue</button>
   <button class="nav-item" onclick="navTo('youtube',this)"><span class="nav-icon">&#9654;</span>YouTube</button>
+    <button class="nav-item" onclick="navTo('jobs',this)"><span class="nav-icon">&#9201;</span>Running Jobs</button>
   <div class="nav-divider"></div>
   <div class="nav-section">Channel</div>
   <button class="nav-item" onclick="navTo('studio',this)"><span class="nav-icon">&#128249;</span>Upload Studio</button>
@@ -212,6 +213,37 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('settings',this)"><span class="nav-icon">&#127917;</span>Settings</button>
 </div>
 <div class="main">
+
+<!-- ===== RUNNING JOBS PANEL ===== -->
+<div id="panel-jobs" class="panel">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:11px">Running &amp; Recent Jobs</div>
+    <div style="margin-bottom:10px;font-size:12px;color:var(--muted)">
+      This panel shows all running and recent pipeline jobs. Status updates every 10 seconds.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <button class="btn btn-primary btn-sm" onclick="fetchJobs()" id="jobs-refresh-btn">&#x21bb; Refresh</button>
+      <span id="jobs-last-update" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div id="jobs-table-wrap">
+      <table class="cost-table" style="width:100%;font-size:12px">
+        <thead>
+          <tr>
+            <th>Job ID</th>
+            <th>PID</th>
+            <th>Topic</th>
+            <th>Status</th>
+            <th>YouTube Link</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="jobs-table-body">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <!-- GLOBAL PIPELINE PROGRESS BAR (non-modal, persists across tabs) -->
 <div id="pipeline-bar" class="gpb" style="display:none">
@@ -2617,6 +2649,77 @@ var _pipelineOrder=['trending','script','seo','thumbnail','queue'];
 var _gpbPollTimer=null;
 var _gpbStepIds=['gpb-script','gpb-audio','gpb-images','gpb-thumb','gpb-build'];
 var _gpbStepPct=[0,20,40,60,75,95];
+
+// ===== RUNNING JOBS PANEL LOGIC =====
+var _jobsPollTimer = null;
+function fetchJobs() {
+  var tbody = document.getElementById('jobs-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">Loading…</td></tr>';
+  fetch('/api/pipeline/jobs', {cache:'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      renderJobsTable(d.jobs||[]);
+      var now = new Date();
+      var ts = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      document.getElementById('jobs-last-update').textContent = 'Last updated: ' + ts;
+    })
+    .catch(function(){
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:18px">Error loading jobs</td></tr>';
+    });
+}
+
+function renderJobsTable(jobs) {
+  var tbody = document.getElementById('jobs-table-body');
+  if (!tbody) return;
+  if (!jobs.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No jobs found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = jobs.map(function(job) {
+    var yt = job.youtube_id ? '<a href="https://youtube.com/watch?v='+esc(job.youtube_id)+'" target="_blank" style="color:var(--accent)">'+esc(job.youtube_id)+'</a>' : '<span style="color:var(--dim)">—</span>';
+    var killBtn = (job.status === 'running' || job.status === 'processing') ? '<button class="btn btn-danger btn-sm" onclick="killJob(\''+job.job_id+'\',this)">&#9632; Kill</button>' : '';
+    return '<tr>'
+      +'<td style="font-size:11px">'+esc(job.job_id)+'</td>'
+      +'<td style="font-size:11px">'+(job.pid||'—')+'</td>'
+      +'<td>'+esc(job.topic||'')+'</td>'
+      +'<td>'+esc(job.status||'')+'</td>'
+      +'<td>'+yt+'</td>'
+      +'<td>'+killBtn+'</td>'
+    +'</tr>';
+  }).join('');
+}
+
+function startJobsPolling() {
+  if (_jobsPollTimer) clearInterval(_jobsPollTimer);
+  fetchJobs();
+  _jobsPollTimer = setInterval(fetchJobs, 10000);
+}
+
+function stopJobsPolling() {
+  if (_jobsPollTimer) clearInterval(_jobsPollTimer);
+}
+
+function killJob(jobId, btn) {
+  if (!confirm('Kill job '+jobId+'?')) return;
+  btn.disabled = true;
+  fetch('/api/pipeline/kill/'+encodeURIComponent(jobId), {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      setTimeout(fetchJobs, 800);
+    })
+    .catch(function(){
+      alert('Failed to kill job.');
+      btn.disabled = false;
+    });
+}
+
+// Hook into navTo to start/stop polling
+var _origNavTo = navTo;
+navTo = function(name, el) {
+  _origNavTo.apply(this, arguments);
+  if (name === 'jobs') startJobsPolling();
+  else stopJobsPolling();
+};
 
 function updatePipelineBar(){
   /* Show/hide is now driven by pipeline state, not tab navigation */
