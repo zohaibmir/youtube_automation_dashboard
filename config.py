@@ -70,6 +70,14 @@ OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
 # Outro CTA text shown in the end card
 OUTRO_CTA_TEXT: str = os.getenv("OUTRO_CTA_TEXT", "LIKE · SUBSCRIBE · SHARE")
 
+# ── YouTube Automation Features ──────────────────────────────────────────────
+# Automatically inject chapter timestamps into video description before upload
+AUTO_CHAPTERS: bool = os.getenv("AUTO_CHAPTERS", "true").lower() in ("true", "1", "yes")
+# Pin a subscribe CTA as the first comment immediately after upload
+PIN_FIRST_COMMENT: bool = os.getenv("PIN_FIRST_COMMENT", "true").lower() in ("true", "1", "yes")
+# Custom pinned comment text (default generated from channel name if empty)
+PINNED_COMMENT_TEXT: str = os.getenv("PINNED_COMMENT_TEXT", "")
+
 # ── Model & API Constants ─────────────────────────────────────────────────────
 CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 YOUTUBE_SCOPES: list[str] = [

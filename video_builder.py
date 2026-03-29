@@ -7,6 +7,7 @@ background music mixing, and branded intro/outro sequences.
 
 import logging
 import os
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -73,14 +74,49 @@ def _resolve_channel_name() -> str:
 def _detect_hw_encoder() -> tuple[str, list[str]]:
     """Return (codec, ffmpeg_params) using the fastest available encoder.
 
-    Priority: libx264 ultrafast (Python per-frame is the bottleneck,
-    not the encoder — so use fastest preset with quality-preserving CRF).
+    preset=fast gives ~60% smaller files than ultrafast with negligible
+    extra encode time. CRF 23 is libx264's default — still excellent
+    quality for YouTube (which re-encodes everything on ingest anyway).
+    Targets ~6–8 Mbps for 1080p, matching YouTube's own upload guidelines.
     """
-    return "libx264", ["-preset", "ultrafast", "-crf", "18"]
+    return "libx264", ["-preset", "fast", "-crf", "23"]
 
 
 _HW_CODEC, _HW_PARAMS = _detect_hw_encoder()
 logger.info("Video encoder: %s %s", _HW_CODEC, _HW_PARAMS)
+
+
+def _ffmpeg_prepare_video(src_path: str, duration: float) -> str:
+    """Pre-process a video clip to target resolution via FFmpeg.
+
+    Uses native FFmpeg scale+crop+loop — avoids per-frame Python PIL
+    resize/crop in MoviePy, which is the main encoding bottleneck.
+    Returns path to the normalised temp file (or original on failure).
+    """
+    src = Path(src_path)
+    out = src.parent / f"_norm_{src.stem}.mp4"
+    if out.exists() and out.stat().st_size > 0:
+        return str(out)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-stream_loop", "-1",          # loop source if shorter than duration
+        "-i", str(src),
+        "-t", str(duration),
+        "-vf", (
+            f"scale={_VIDEO_WIDTH}:{_VIDEO_HEIGHT}"
+            f":force_original_aspect_ratio=increase,"
+            f"crop={_VIDEO_WIDTH}:{_VIDEO_HEIGHT}"
+        ),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-an",
+        str(out),
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=120)
+    if result.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        logger.warning("FFmpeg pre-process failed for %s — using original", src_path)
+        return src_path
+    return str(out)
 _CAPTION_FONT_SIZE = 55
 _CAPTION_STROKE_WIDTH = 3
 
@@ -276,21 +312,13 @@ def build_video(
         ext = Path(visual_path).suffix.lower()
 
         if ext == ".mp4":
-            # ── Video clip ────────────────────────────────────────────────────
-            raw = VideoFileClip(visual_path, audio=False)
-            if raw.duration < duration:
+            # ── Video clip — FFmpeg normalises to 1920×1080 (no Python per-frame resize)
+            norm_path = _ffmpeg_prepare_video(visual_path, duration)
+            raw = VideoFileClip(norm_path, audio=False)
+            if raw.duration < duration - 0.05:
                 loops = int(duration / raw.duration) + 1
                 raw = concatenate_videoclips([raw] * loops)
-            base = (
-                raw.subclip(0, duration)
-                   .resize(height=_VIDEO_HEIGHT)
-                   .crop(
-                       x_center=_VIDEO_WIDTH / 2,
-                       y_center=_VIDEO_HEIGHT / 2,
-                       width=_VIDEO_WIDTH,
-                       height=_VIDEO_HEIGHT,
-                   )
-            )
+            base = raw.subclip(0, duration)
         else:
             # ── Static image ──────────────────────────────────────────────────
             base = (
@@ -305,10 +333,11 @@ def build_video(
                 )
             )
 
-        # Ken Burns slow-zoom
+        # Ken Burns slow-zoom — only on static images (video clips have natural motion;
+        # applying it would require per-frame Python PIL resize calls, killing performance)
         is_static = (ext != ".mp4")
-        if KEN_BURNS_ZOOM > 0:
-            base = _apply_ken_burns(base, duration, KEN_BURNS_ZOOM, is_static=is_static)
+        if KEN_BURNS_ZOOM > 0 and is_static:
+            base = _apply_ken_burns(base, duration, KEN_BURNS_ZOOM, is_static=True)
 
         # Caption as pre-rendered overlay (rendered ONCE, not per-frame)
         caption = segment.get("caption", "")

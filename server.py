@@ -495,6 +495,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "edgeVoice":      "EDGE_TTS_VOICE",
                 "ytVis":          "DEFAULT_VISIBILITY",
                 "ytCategory":     "YOUTUBE_CATEGORY_ID",
+                # YouTube Automation features
+                "autoChapters":   "AUTO_CHAPTERS",
+                "pinComment":     "PIN_FIRST_COMMENT",
+                "pinnedCommentText": "PINNED_COMMENT_TEXT",
             }
             updated = []
             for js_key, env_key in env_map.items():

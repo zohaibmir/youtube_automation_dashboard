@@ -321,3 +321,71 @@ def upload_video(
 
     logger.info("Published: https://youtube.com/watch?v=%s", video_id)
     return video_id
+
+
+def pin_first_comment(
+    video_id: str,
+    comment_text: str,
+    channel_slug: str | None = None,
+) -> str | None:
+    """Post a comment on a video and pin it as the top comment.
+
+    Requires the youtube scope (not just youtube.upload).
+    Fails gracefully — a pinning error never blocks the pipeline.
+
+    Args:
+        video_id:     YouTube video ID (e.g. "dQw4w9WgXcQ").
+        comment_text: Text of the comment to post and pin.
+        channel_slug: Channel slug; uses default if omitted.
+
+    Returns:
+        The comment ID on success, None on failure.
+    """
+    try:
+        token_path = _get_token_path(channel_slug)
+        creds = Credentials.from_authorized_user_file(
+            token_path,
+            ["https://www.googleapis.com/auth/youtube"],
+        )
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(token_path, "w") as f:
+                f.write(creds.to_json())
+
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # Insert the top-level comment
+        comment_resp = youtube.commentThreads().insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "videoId": video_id,
+                    "topLevelComment": {
+                        "snippet": {"textOriginal": comment_text}
+                    },
+                }
+            },
+        ).execute()
+
+        comment_id = comment_resp["id"]
+        logger.info("Comment posted: %s", comment_id)
+
+        # Pin it
+        youtube.comments().setModerationStatus(
+            id=comment_id,
+            moderationStatus="published",
+            banAuthor=False,
+        ).execute()
+
+        logger.info("Comment pinned on video %s", video_id)
+        return comment_id
+
+    except HttpError as e:
+        logger.warning(
+            "Pin comment failed (video=%s, status=%s) — continuing: %s",
+            video_id, e.resp.status, e,
+        )
+        return None
+    except Exception as e:
+        logger.warning("Pin comment failed (video=%s) — continuing: %s", video_id, e)
+        return None

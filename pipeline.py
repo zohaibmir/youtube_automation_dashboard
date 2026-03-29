@@ -15,10 +15,11 @@ import logging
 import os
 import signal
 import shutil
+import subprocess
 import uuid
 
 from audio_generator import generate_audio_segments
-from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, VISUAL_MODE
+from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _RUNS_DIR = os.path.join(_BASE_DIR, "runs")          # runs/<job_id>/ per-run workdirs
@@ -33,9 +34,81 @@ from shorts_builder import build_shorts
 from thumbnail import make_thumbnail
 from video_builder import build_video
 from visual_fetcher import fetch_segment_images, fetch_segment_videos
-from youtube_uploader import upload_video
+from youtube_uploader import upload_video, pin_first_comment
 
 logger = logging.getLogger(__name__)
+
+
+# ── Chapter / timestamp helpers ───────────────────────────────────────────────
+
+def _audio_duration(path: str) -> float:
+    """Return duration of an audio file in seconds via ffprobe."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        streams = json.loads(r.stdout).get("streams", [])
+        return float(streams[0]["duration"]) if streams else 0.0
+    except Exception:
+        return 0.0
+
+
+def build_chapters(segments: list[dict], audio_files: list[str]) -> str:
+    """Build a YouTube-compatible chapter string from segment audio durations.
+
+    YouTube chapter requirements:
+      - At least 3 chapters
+      - First chapter must start at 0:00
+      - Each chapter >= 10 seconds
+      - Format: "MM:SS Chapter Title" (one per line)
+
+    The intro clip (INTRO_DURATION seconds) is added as the first chapter.
+    Crossfade overlap is subtracted between clips to match actual video timing.
+
+    Returns a string block ready to append to the video description.
+    """
+    def _fmt(secs: float) -> str:
+        s = int(secs)
+        h, rem = divmod(s, 3600)
+        m, sc = divmod(rem, 60)
+        if h:
+            return f"{h}:{m:02d}:{sc:02d}"
+        return f"{m}:{sc:02d}"
+
+    lines = []
+    cursor = 0.0
+
+    # Chapter 0 — branded intro
+    if INTRO_DURATION >= 10:
+        lines.append(f"{_fmt(cursor)} Introduction")
+        cursor += INTRO_DURATION - CROSSFADE_DURATION
+    else:
+        # Intro too short for its own chapter — first content chapter anchors at 0:00
+        # and we still offset the cursor for subsequent chapters
+        first_content_at_zero = True
+        cursor += INTRO_DURATION - CROSSFADE_DURATION
+
+    for i, (seg, audio_path) in enumerate(zip(segments, audio_files)):
+        duration = _audio_duration(audio_path)
+        if duration < 10:
+            # Too short — merge into running cursor without a new chapter
+            cursor += max(duration - CROSSFADE_DURATION, 0)
+            continue
+        caption = seg.get("caption") or seg.get("title") or f"Part {i + 1}"
+        # Clean up caption for chapter label (strip quotes, trim length)
+        caption = caption.strip('"\' ').split("\n")[0][:60]
+        # First content chapter must anchor at 0:00 if intro was too short
+        if not lines and locals().get("first_content_at_zero"):
+            lines.append(f"0:00 {caption}")
+        else:
+            lines.append(f"{_fmt(max(cursor, 0))} {caption}")
+        cursor += duration - CROSSFADE_DURATION
+
+    if len(lines) < 3:
+        return ""  # YouTube requires at least 3 chapters
+
+    return "\n".join(lines)
 
 
 # ── Per-job workdir helpers ───────────────────────────────────────────────────
@@ -270,6 +343,16 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         video_path = build_video(segments, audio_files, visual_files,
                                  title=content.get("title"), music_path=music)
 
+        # Step 5a — Inject YouTube chapters into description (if enabled)
+        if AUTO_CHAPTERS:
+            chapters = build_chapters(segments, audio_files)
+            if chapters:
+                sep = "\n\n" if content.get("description") else ""
+                content["description"] = content.get("description", "") + sep + "CHAPTERS\n" + chapters
+                logger.info("[job=%s] Chapters injected (%d lines)", job_id, len(chapters.splitlines()))
+        else:
+            logger.info("[job=%s] Auto chapters disabled — skipping", job_id)
+
         # Step 5b — YouTube Shorts
         short_paths = []
         if shorts_count and shorts_count > 0:
@@ -304,6 +387,17 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         duration_s = sum(seg.get("duration_s", 45) for seg in segments)
         log_video_complete(vid_id, content["title"], youtube_id, duration_s)
         _finish_job(job_id, youtube_id=youtube_id)
+
+        # Step 8 — Pin first comment (if enabled)
+        if PIN_FIRST_COMMENT and youtube_id:
+            ch_name = CHANNEL_NAME or "this channel"
+            comment = (
+                PINNED_COMMENT_TEXT
+                or f"⬇️ WATCH NEXT — more signs & prophecies on {ch_name}\n"
+                   f"🔔 Subscribe & hit the bell so you never miss a video\n"
+                   f"💬 Share this with someone who needs to see it"
+            )
+            pin_first_comment(youtube_id, comment, channel_slug=channel_slug)
 
         logger.info("[job=%s] Pipeline complete: https://youtube.com/watch?v=%s", job_id, youtube_id)
         return youtube_id
