@@ -246,6 +246,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif path == "/api/pipeline/lock-status":
             from pipeline import pipeline_status
             self._json_response(pipeline_status())
+        elif path == "/api/pipeline/jobs":
+            from pipeline import list_jobs
+            self._json_response({"jobs": list_jobs()})
         elif path == "/api/channels":
             self._handle_channels_get()
         elif path == "/api/social/platforms":

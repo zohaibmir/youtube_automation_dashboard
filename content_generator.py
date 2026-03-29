@@ -105,12 +105,13 @@ def _extract_json(raw: str) -> dict:
     raise json.JSONDecodeError("Could not parse JSON from response", candidate, 0)
 
 
-def generate_script(topic: str, guidance: str | None = None) -> dict:
+def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6000) -> dict:
     """Generate a full video script for the given topic.
 
     Args:
-        topic:    The video topic string.
-        guidance: Optional creator instructions to guide the AI's script style/content.
+        topic:      The video topic string.
+        guidance:   Optional creator instructions to guide the AI's script style/content.
+        max_tokens: Max tokens for Claude response (default 6000; use 8000 for 20+ segments).
 
     Returns a dict with keys: title, description, tags,
     thumbnail_text, thumbnail_subtext, segments.
@@ -151,7 +152,7 @@ For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins s
 For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
     logger.info("Generating script for topic: %s", topic)
-    msg = _call_claude(CLAUDE_MODEL, 3000, [{"role": "user", "content": prompt}])
+    msg = _call_claude(CLAUDE_MODEL, max_tokens, [{"role": "user", "content": prompt}])
     raw = msg.content[0].text
     script = _extract_json(raw)
     script["_usage"] = {
