@@ -212,3 +212,75 @@ tokens/
 ```
 
 The legacy `token.json` in the project root is automatically migrated to `tokens/default.json` on first run.
+
+---
+
+## Copilot Token Optimization
+
+This repository now includes a Copilot customization layer to reduce repeated context-loading and improve first-pass answer quality.
+
+### Beginner guide
+
+Start with:
+
+- `COPILOT_BEGINNER_GUIDE.md`
+
+### What is included
+
+- Always-on workspace instructions: `.github/copilot-instructions.md`
+- File-targeted instructions: `.github/instructions/`
+- Custom agents: `.github/agents/`
+- Skills: `.github/skills/`
+- Prompt files (slash commands): `.github/prompts/`
+- Local MCP server: `scripts/repo_mcp_server.py`
+- Workspace MCP config: `.vscode/mcp.json`
+
+### Why this saves tokens
+
+- Copilot starts from known architecture (`pipeline.py`, `server.py`, dashboard) instead of rediscovering it each chat.
+- Repeated tasks can use short prompts (`/audit-roadmap-feature`, `/map-server-api`) rather than long instructions.
+- The MCP server returns compact, structured summaries, which avoids repeatedly reading large files.
+
+### MCP tools now available for compact repo summaries
+
+- `get_repo_overview`
+- `get_pipeline_stage_map`
+- `get_server_api_surface`
+- `get_social_platform_status`
+- `get_recent_job_state`
+- `get_database_snapshot`
+- `get_scheduler_state`
+- `get_topic_queue_state`
+- `get_recent_artifacts`
+- `get_dashboard_panel_map`
+- `get_runtime_summary`
+- `get_channel_registry_summary`
+- `get_recent_job_failures`
+
+### MCP resources now available for quick context attachment
+
+- `repo://overview`
+- `repo://roadmap`
+- `repo://api-surface`
+- `repo://runtime-summary`
+- `repo://dashboard-map`
+- `repo://job-failures`
+
+### Additional high-repeat prompt commands
+
+- `/audit-scheduler-wiring`
+- `/audit-topic-queue-wiring`
+- `/review-dashboard-panel-api`
+- `/summarize-recent-job-failures`
+
+### Additional skills for recurring diagnostics
+
+- `scheduler-verification`
+- `queue-dashboard-wiring`
+
+### Quick start for this setup
+
+1. Open VS Code in this workspace.
+2. Trust and start the MCP server defined in `.vscode/mcp.json`.
+3. Use a focused agent (`Repo Planner`, `Pipeline Implementer`, `Dashboard Operator`) or a prompt file.
+4. For status questions, prefer MCP summary tools over broad file scans.
