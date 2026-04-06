@@ -98,13 +98,15 @@ def list_channels() -> list[dict]:
     channels = _load_channels()
     result = []
     for slug, info in channels.items():
+        token_file = info.get("token_file")
+        has_token = bool(token_file) and os.path.exists(os.path.join(_TOKENS_DIR, str(token_file)))
         result.append({
             "slug": slug,
             "name": info.get("name", slug),
             "handle": info.get("handle", ""),
             "channel_id": info.get("channel_id", ""),
             "is_default": info.get("is_default", False),
-            "has_token": os.path.exists(os.path.join(_TOKENS_DIR, info.get("token_file", ""))),
+            "has_token": has_token,
         })
     return result
 
@@ -203,9 +205,11 @@ def remove_channel(slug: str) -> bool:
     if slug not in channels:
         return False
     info = channels.pop(slug)
-    token_path = os.path.join(_TOKENS_DIR, info.get("token_file", ""))
-    if os.path.exists(token_path):
-        os.remove(token_path)
+    token_file = info.get("token_file")
+    if token_file:
+        token_path = os.path.join(_TOKENS_DIR, str(token_file))
+        if os.path.exists(token_path):
+            os.remove(token_path)
     # If removed channel was default, make the first remaining channel default
     if info.get("is_default") and channels:
         first = next(iter(channels))
@@ -219,17 +223,31 @@ def _get_token_path(channel_slug: str | None = None) -> str:
     channels = _load_channels()
 
     if channel_slug and channel_slug in channels:
-        return os.path.join(_TOKENS_DIR, channels[channel_slug]["token_file"])
+        token_file = channels[channel_slug].get("token_file")
+        if token_file:
+            return os.path.join(_TOKENS_DIR, str(token_file))
+        raise RuntimeError(
+            f"Channel '{channel_slug}' is missing OAuth token metadata. "
+            "Re-connect this channel in Settings -> YouTube Channels."
+        )
 
     # Try default channel
     for slug, info in channels.items():
         if info.get("is_default"):
-            return os.path.join(_TOKENS_DIR, info["token_file"])
+            token_file = info.get("token_file")
+            if token_file:
+                return os.path.join(_TOKENS_DIR, str(token_file))
 
     # Single channel
     if len(channels) == 1:
-        info = next(iter(channels.values()))
-        return os.path.join(_TOKENS_DIR, info["token_file"])
+        only_slug, info = next(iter(channels.items()))
+        token_file = info.get("token_file")
+        if token_file:
+            return os.path.join(_TOKENS_DIR, str(token_file))
+        raise RuntimeError(
+            f"Channel '{only_slug}' is missing OAuth token metadata. "
+            "Re-connect this channel in Settings -> YouTube Channels."
+        )
 
     # Legacy fallback
     if os.path.exists(_LEGACY_TOKEN):
