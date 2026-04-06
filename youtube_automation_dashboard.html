@@ -1260,6 +1260,7 @@ canvas{display:block;width:100%;height:auto}
   <button class="btn btn-primary" onclick="runChannelAudit()" id="health-audit-btn" style="margin-bottom:14px">
     <span id="health-audit-icon">&#128138;</span> Run Full Audit
   </button>
+  <div id="health-audit-error" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(255,90,90,0.08);border:1px solid rgba(255,90,90,0.3);border-radius:8px;font-size:12px;color:var(--text);line-height:1.6"></div>
   <button class="btn btn-danger btn-sm" onclick="fixAllVideos()" id="health-fixall-btn" style="margin-bottom:14px;display:none">
     &#128295; Fix All Issues
   </button>
@@ -5063,13 +5064,39 @@ var _auditCache=null;
 function runChannelAudit(){
   if(_auditCache){_renderAudit(_auditCache);return;}
   var btn=document.getElementById('health-audit-btn');
+  var errBox=document.getElementById('health-audit-error');
+  if(errBox)errBox.style.display='none';
   btn.disabled=true;document.getElementById('health-audit-icon').textContent='⏳';
-  fetch('/api/channel/audit').then(function(r){return r.json();}).then(function(d){
+  // Pass selected channel slug if available
+  var slugSel=document.getElementById('health-channel-slug-sel');
+  var slug=slugSel?slugSel.value:'';
+  var url='/api/channel/audit'+(slug?'?slug='+encodeURIComponent(slug):'');
+  fetch(url).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
-    if(!d.ok){alert('Audit failed: '+(d.error||'unknown'));return;}
+    if(!d.ok){
+      _showAuditError(d.error||'unknown', d.error_code, d.channel);
+      return;
+    }
     _auditCache=d;
     _renderAudit(d);
-  }).catch(function(e){btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';alert(e.message);});
+  }).catch(function(e){
+    btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
+    _showAuditError(e.message);
+  });
+}
+
+function _showAuditError(msg, code, channel){
+  var errBox=document.getElementById('health-audit-error');
+  if(!errBox)return;
+  if(code==='token_revoked'){
+    errBox.innerHTML='<strong>&#9888; Token Expired</strong><br>'+
+      'The YouTube token for <strong>'+(channel||'this channel')+'</strong> has been revoked or expired by Google.<br>'+
+      '<span style="font-size:11px;color:var(--dim)">To fix: Go to <strong>Settings → YouTube Settings → Connected Channels</strong>, '+
+      'click <strong>✗ Remove</strong> on this channel, then click <strong>+ Add Channel</strong> to re-authenticate.</span>';
+  } else {
+    errBox.innerHTML='<strong>&#9888; Audit failed:</strong> '+_escHtml(msg);
+  }
+  errBox.style.display='block';
 }
 
 function _renderAudit(d){

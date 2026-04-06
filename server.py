@@ -363,7 +363,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_social_platforms_get()
         elif path == "/api/branding/assets":
             self._handle_branding_assets_get()
-        elif path == "/api/channel/audit":
+        elif path.startswith("/api/channel/audit"):
             self._handle_channel_audit()
         elif path == "/api/studio/videos":
             self._handle_studio_videos_get()
@@ -873,12 +873,25 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def _handle_channel_audit(self) -> None:
         """GET /api/channel/audit — Full channel SEO audit."""
         if not self._is_request_allowed(require_localhost=False): return
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        slug = (qs.get("slug") or [None])[0] or None
         try:
             from channel_manager import audit_channel
-            result = audit_channel()
+            result = audit_channel(slug)
             self._json_response(result)
         except Exception as e:
-            self._json_response({"ok": False, "error": str(e)})
+            err = str(e)
+            if err.startswith("TOKEN_REVOKED:"):
+                channel_name = err.split("TOKEN_REVOKED:", 1)[1]
+                self._json_response({
+                    "ok": False,
+                    "error": f"YouTube token for '{channel_name}' has been revoked or expired by Google.",
+                    "error_code": "token_revoked",
+                    "channel": channel_name,
+                })
+            else:
+                self._json_response({"ok": False, "error": err})
 
     def _handle_channel_update(self) -> None:
         """POST /api/channel/update — Update channel description/keywords/etc."""

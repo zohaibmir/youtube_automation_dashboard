@@ -230,6 +230,18 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
     Falls back to browser OAuth flow if no token exists."""
     token_path = _get_token_path(channel_slug)
     creds = None
+
+    # Resolve the display name: look up which channel record owns this token file
+    _token_basename = os.path.basename(token_path)
+    _resolved_slug = channel_slug
+    if not _resolved_slug:
+        for _s, _info in _load_channels().items():
+            if _info.get("token_file") == _token_basename:
+                _resolved_slug = _info.get("name") or _s
+                break
+        if not _resolved_slug:
+            _resolved_slug = _token_basename.replace(".json", "")
+
     if os.path.exists(token_path):
         # Load with only the upload scope so tokens originally created without
         # youtube.readonly can still refresh without invalid_scope errors.
@@ -239,7 +251,7 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
         return creds
 
     if creds and creds.expired and creds.refresh_token:
-        logger.info("Refreshing expired YouTube token for channel...")
+        logger.info("Refreshing expired YouTube token for channel '%s'...", _resolved_slug)
         try:
             creds.refresh(Request())
             with open(token_path, "w") as f:
@@ -249,11 +261,10 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
             error_str = str(refresh_error)
             if "invalid_grant" in error_str.lower():
                 raise RuntimeError(
-                    f"YouTube token for '{channel_slug or 'default'}' has been revoked or expired by Google. "
-                    "Please re-authenticate: Settings → YouTube Channels → Remove this channel → Add Channel again."
+                    f"TOKEN_REVOKED:{_resolved_slug}"
                 )
             else:
-                raise RuntimeError(f"Failed to refresh token: {error_str}")
+                raise RuntimeError(f"Failed to refresh token for '{_resolved_slug}': {error_str}")
 
     # No valid token — need to add channel first
     raise RuntimeError(
