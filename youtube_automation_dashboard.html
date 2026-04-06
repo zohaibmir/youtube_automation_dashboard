@@ -661,6 +661,7 @@ canvas{display:block;width:100%;height:auto}
       <button class="btn btn-primary" onclick="addManualToQueue()">+ Add</button>
       <button class="btn btn-ghost btn-sm" id="gen-plan-btn" onclick="generateFullPlan()"><span id="gen-plan-icon">&#9889;</span> AI: 4-week plan</button>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV()">&#11015; Export CSV</button>
+      <button class="btn btn-success btn-sm" id="sched-run-next-btn" onclick="schedulerRunNext()" title="Dequeue next pending topic and run the full pipeline (same as scheduler)">&#9654; Run Next from Queue</button>
       <button class="btn btn-danger btn-sm" onclick="clearQueue()">Clear all</button>
     </div>
   </div>
@@ -3494,6 +3495,28 @@ function removeQItem(id){queue=queue.filter(function(q){return q.id!==id;});save
 function markQDone(id){var i=queue.find(function(q){return q.id===id;});if(i)i.status='done';saveQ();renderQueue();}
 function clearQueue(){if(confirm('Clear all?')){queue=[];saveQ();renderQueue();}}
 function saveQ(){_dbSave('queue_data',queue);}
+
+function schedulerRunNext(){
+  var btn=document.getElementById('sched-run-next-btn');
+  if(btn){btn.disabled=true;btn.textContent='Starting…';}
+  fetchJsonSafe('/api/scheduler/run-next',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})
+    .then(function(data){
+      if(data&&data.ok){
+        _setInlineError('sched-run-next-btn','',false);
+        alert('Pipeline started for: '+data.topic);
+        loadPipelineStatus();
+      } else {
+        var msg=(data&&data.error)||'Failed to start';
+        alert('Error: '+msg);
+        if(btn){btn.disabled=false;btn.textContent='\u25B6 Run Next from Queue';}
+      }
+    })
+    .catch(function(err){
+      alert('Error: '+err.message||err);
+      if(btn){btn.disabled=false;btn.textContent='\u25B6 Run Next from Queue';}
+    });
+}
+
 function exportCSV(){
   var csv='Title,Type,Date,Status\n'+queue.map(function(q){return '"'+q.title+'",'+q.type+','+q.date+','+q.status;}).join('\n');
   var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(csv);a.download='youtube_queue.csv';a.click();

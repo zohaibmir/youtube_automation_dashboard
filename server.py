@@ -403,6 +403,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/pipeline/run":
             self._handle_pipeline_run()
+        elif path == "/api/scheduler/run-next":
+            self._handle_scheduler_run_next()
         elif path == "/api/pipeline/upload":
             self._handle_pipeline_upload()
         elif path == "/api/pipeline/cancel":
@@ -517,6 +519,54 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": True})
         except Exception as ex:
             self._json_response({"ok": False, "error": str(ex)})
+
+    def _handle_scheduler_run_next(self) -> None:
+        """Dequeue the next pending topic and run the pipeline — same logic as the scheduler."""
+        try:
+            from topic_queue import dequeue_topic, mark_topic_done, mark_topic_failed, pending_count
+            from config import SCHEDULER_CHANNEL
+        except Exception as ex:
+            self._json_response({"ok": False, "error": f"Import error: {ex}"}); return
+
+        with _pipeline_lock:
+            if _pipeline_job["status"] == "running":
+                self._json_response({"ok": False, "error": "Pipeline already running"}); return
+
+        topic = dequeue_topic()
+        if not topic:
+            self._json_response({"ok": False, "error": "Queue is empty — no pending topics"}); return
+
+        # Read optional channel override from request body
+        channel_slug = None
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = json.loads(self.rfile.read(length))
+                channel_slug = body.get("channel_slug", "").strip() or None
+        except Exception:
+            pass
+        channel_slug = channel_slug or SCHEDULER_CHANNEL or None
+
+        with _pipeline_lock:
+            _pipeline_job.update({
+                "status": "running", "topic": topic, "message": "Starting…",
+                "video_url": None, "thumbnail_url": None, "title": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": channel_slug,
+                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+            })
+
+        def _bg():
+            try:
+                _run_pipeline_bg(topic, channel_slug=channel_slug)
+                mark_topic_done(topic)
+            except Exception as exc:
+                mark_topic_failed(topic)
+                with _pipeline_lock:
+                    _pipeline_job.update({"status": "failed", "error": str(exc)})
+
+        t = threading.Thread(target=_bg, daemon=True)
+        t.start()
+        self._json_response({"ok": True, "topic": topic})
 
     def _handle_pipeline_upload(self) -> None:
         if not _DB_AVAILABLE:
