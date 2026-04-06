@@ -54,6 +54,14 @@ python main.py "10 paise bachane ki aadat"
 
 # 8. Start the scheduler (runs forever)
 python scheduler.py
+
+# Optional: run early morning UTC instead of the default 14:00 UTC
+export SCHEDULER_PUBLISH_TIME=03:00
+python scheduler.py
+
+# Optional: run twice daily at fixed server times
+export SCHEDULER_PUBLISH_TIMES=02:00,14:00
+python scheduler.py
 ```
 
 ### Keep it running overnight (Linux/Mac)

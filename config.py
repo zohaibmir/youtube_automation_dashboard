@@ -21,6 +21,9 @@ CHANNEL_NICHE: str = os.getenv("CHANNEL_NICHE", "politics and religion")
 CHANNEL_LANGUAGE: str = os.getenv("CHANNEL_LANGUAGE", "english")
 CHANNEL_AUDIENCE: str = os.getenv("CHANNEL_AUDIENCE", "global")
 VIDEOS_PER_WEEK: int = int(os.getenv("VIDEOS_PER_WEEK", "5"))
+SCHEDULER_PUBLISH_TIME: str = os.getenv("SCHEDULER_PUBLISH_TIME", "14:00")
+SCHEDULER_PUBLISH_TIMES: str = os.getenv("SCHEDULER_PUBLISH_TIMES", "")
+SCHEDULER_CHANNEL: str | None = os.getenv("SCHEDULER_CHANNEL", "").strip() or None
 
 # ── File Paths ────────────────────────────────────────────────────────────────
 DB_PATH: str = os.getenv("DB_PATH", "yt_automation.db")

@@ -844,6 +844,12 @@ canvas{display:block;width:100%;height:auto}
       </select>
     </div>
   </div>
+  <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+    <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-size:12px;color:var(--text)">
+      <input type="checkbox" id="cfg-auto-upload-youtube" checked oninput="markDirty()"/>
+      Queue Upload button runs pipeline and auto-uploads video + Shorts
+    </label>
+  </div>
   <div class="s-budget-row" style="margin-top:8px">
     <div style="flex:1">
       <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
@@ -2962,6 +2968,77 @@ async function fetchJsonSafe(url, opts){
   return data;
 }
 
+function _setInlineError(containerId, message){
+  var el=document.getElementById(containerId);
+  if(!el)return;
+  el.innerHTML='<div style="font-size:11px;color:var(--red);padding:8px;border:1px solid rgba(255,91,91,.35);border-radius:6px;background:rgba(255,91,91,.08)">'+esc(message)+'</div>';
+}
+
+function _isAutoUploadEnabled(){
+  var cb=document.getElementById('cfg-auto-upload-youtube');
+  return !!(cb&&cb.checked);
+}
+
+function _channelDisplayName(slug){
+  if(!slug)return 'Default';
+  var ch=(_ytChannels||[]).find(function(c){return c.slug===slug;});
+  return ch?(ch.name||ch.slug):slug;
+}
+
+function _persistDraftContext(){
+  var draft={
+    selectedChannelSlug:selectedChannelSlug||'',
+    selectedChannelLanguage:selectedChannelLanguage||'english',
+    trendData:Array.isArray(trendData)?trendData:[],
+    trendCtxHtml:(document.getElementById('trend-ctx')||{}).innerHTML||'',
+    seoAutoContext:_seoAutoContext||{script:'',topic:''},
+    scriptTopic:(document.getElementById('sc-topic')||{}).value||'',
+    scriptGuidance:(document.getElementById('sc-guidance')||{}).value||'',
+    scriptContext:(document.getElementById('sc-ctx')||{}).value||'',
+    scriptText:(document.getElementById('sc-text')||{}).textContent||'',
+    scriptMode:scriptMode||'ai',
+    language:getLang(),
+    durationHint:getScriptDuration()
+  };
+  _dbSave('draft_context',draft);
+}
+
+function _restoreDraftContext(draft){
+  if(!draft||typeof draft!=='object')return;
+  if(draft.language){
+    var langEl=document.getElementById('cfg-lang');
+    if(langEl)langEl.value=draft.language;
+  }
+  if(draft.durationHint){
+    var durEl=document.getElementById('sc-dur');
+    if(durEl)durEl.value=draft.durationHint;
+  }
+  if(draft.scriptMode&&(draft.scriptMode==='ai'||draft.scriptMode==='hybrid')){
+    setScriptMode(draft.scriptMode);
+  }
+  if(draft.scriptTopic){document.getElementById('sc-topic').value=draft.scriptTopic;}
+  if(draft.scriptGuidance){document.getElementById('sc-guidance').value=draft.scriptGuidance;}
+  if(draft.scriptContext){document.getElementById('sc-ctx').value=draft.scriptContext;}
+  if(draft.scriptText){
+    document.getElementById('sc-text').textContent=draft.scriptText;
+    document.getElementById('sc-out').style.display='block';
+  }
+  if(draft.seoAutoContext&&typeof draft.seoAutoContext==='object'){
+    _seoAutoContext=draft.seoAutoContext;
+  }
+  if(Array.isArray(draft.trendData)&&draft.trendData.length){
+    trendData=draft.trendData;
+    renderTrends(trendData);
+    if(draft.trendCtxHtml){
+      document.getElementById('trend-ctx').innerHTML=draft.trendCtxHtml;
+    }
+    document.getElementById('trend-out').style.display='block';
+  }
+  if(typeof draft.selectedChannelSlug==='string'){
+    setSelectedChannel(draft.selectedChannelSlug);
+  }
+}
+
 // ===== TRENDING (with web search) =====
 var trendData=[];
 var _trendActiveBtn=null;
@@ -2992,6 +3069,7 @@ function setSelectedChannel(slug) {
       displayEl.textContent = '🌐 Default channel';
     }
   }
+  _persistDraftContext();
 }
 
 async function getTrending(filter,btnEl){
@@ -3063,6 +3141,7 @@ async function getTrending(filter,btnEl){
     ctx.innerHTML='<strong>&#128269; Web search used — '+filter.toUpperCase()+'</strong> &mdash; results grounded in real search data as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
+    _persistDraftContext();
   }catch(e){alert('Could not parse topics. Try again.');console.error(e,raw);}
 }
 
@@ -3100,6 +3179,7 @@ async function getCustomTrending(){
     ctx.innerHTML='<strong>&#9997;&#65039; Custom topic: &ldquo;'+esc(customTitle)+'&rdquo;</strong> &mdash; 8 ideas generated via live web search as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
+    _persistDraftContext();
   }catch(e){alert('Could not parse topics. Try again.');console.error(e,raw);}
 }
 
@@ -3153,7 +3233,7 @@ function renderTrends(data){
   });
 }
 
-function useForScript(i){document.getElementById('sc-topic').value=trendData[i].title;navTo('script',document.querySelectorAll('.nav-item')[1]);}
+function useForScript(i){document.getElementById('sc-topic').value=trendData[i].title;_persistDraftContext();navTo('script',document.querySelectorAll('.nav-item')[1]);}
 function addTrendToQueue(i,btn){
   var voiceId=(document.getElementById('trend-voice-'+i)||{}).value||'';
   var meta=voiceId?{voice_id:voiceId}:{};
@@ -3233,6 +3313,7 @@ async function writeScript(){
     document.getElementById('sc-out').style.display='block';
     // Store for SEO auto-context (does not require textarea to be visible)
     _seoAutoContext={script:s,topic:topic};
+    _persistDraftContext();
   }
   setBtn('sc-btn','sc-icon','&#9997;&#65039;',false);
 }
@@ -3241,7 +3322,7 @@ async function writeHook(){
   var t=document.getElementById('sc-topic').value.trim();if(!t){alert('Enter topic first.');return;}
   setBtn('hook-btn','hook-icon','&#9889;',true);
   var r=await claude('Write ONLY the 30-second opening hook for a '+getAud()+' YouTube video: "'+t+'". Language: '+getLang()+'. Make it impossible to stop. Just the hook, nothing else.',400,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('hook-btn','hook-icon','&#9889;',false);
 }
 
@@ -3249,7 +3330,7 @@ async function writeThumbnail(){
   var t=document.getElementById('sc-topic').value.trim();if(!t){alert('Enter topic first.');return;}
   setBtn('thumb-btn','thumb-icon','&#128444;&#65039;',true);
   var r=await claude('Give 3 thumbnail text options for a '+getAud()+' YouTube video: "'+t+'". Each: 5-7 words ALL CAPS, emotional. Numbered list only.',300,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('thumb-btn','thumb-icon','&#128444;&#65039;',false);
 }
 
@@ -3258,7 +3339,7 @@ async function writeShortScript(){
   setBtn('short-btn','short-icon','&#9654;',true);
   var r=await claude('Write a 60-second YouTube Short script about: "'+t+'". Audience: '+getAud()+'. Language: '+getLang()+
     '. Format: [HOOK 0:00] [MAIN POINT 0:08] [PROOF/STAT 0:25] [CTA 0:50]. Keep it punchy - this is for Shorts. No fluff.',600,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('short-btn','short-icon','&#9654;',false);
 }
 
@@ -3278,6 +3359,7 @@ function sendToSEO(){
     preview='No topic yet — SEO will use your channel niche: '+getNiche();
   }
   _seoAutoContext={script:script,topic:topic};
+  _persistDraftContext();
   _showSeoContext(source,preview);
   navTo('seo',document.querySelectorAll('.nav-item')[2]);
   // Auto-generate immediately
@@ -3288,6 +3370,7 @@ function useForSEO(i){
   var t=trendData[i];
   var context='Topic: "'+t.title+'"\nHook: '+t.hook+'\nWhy now: '+t.why_now+'\nType: '+t.type+'\nAudience: '+getAud()+'\nNiche: '+getNiche();
   _seoAutoContext={script:context,topic:t.title};
+  _persistDraftContext();
   _showSeoContext('Trending: "'+t.title+'"','Hook: '+t.hook.slice(0,100));
   navTo('seo',document.querySelectorAll('.nav-item')[2]);
   setTimeout(generateSEO,80);
@@ -3430,10 +3513,12 @@ function renderQueue(){
         :'<div class="q-thumb-prev" style="width:72px;height:41px;border-radius:5px;background:var(--bg4);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--dim)">&#128444;&#65039;</div>';
       var badges='<span class="q-badge '+(item.hasScript?'q-badge-on':'q-badge-off')+'">&#9997; Script</span>'+
         ' <span class="q-badge '+(item.hasSEO?'q-badge-on':'q-badge-off')+'">&#128269; SEO</span>'+
-        ' <span class="q-badge '+(item.hasThumb?'q-badge-on':'q-badge-off')+'">&#128444; Thumb</span>';
+        ' <span class="q-badge '+(item.hasThumb?'q-badge-on':'q-badge-off')+'">&#128444; Thumb</span>'+
+        ' <span class="q-badge q-badge-on">&#128250; '+esc(_channelDisplayName(item.channel_slug||''))+'</span>'+
+        ' <span class="q-badge q-badge-on">&#127760; '+esc(item.language||'english')+'</span>';
       var safeTitle=item.title.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
       var uploadBtn=item.status!=='done'
-        ?'<button class="btn btn-'+(window.ytToken?'green':'ghost')+' btn-sm" onclick="event.stopPropagation();uploadQueueItem('+item.id+')" style="white-space:nowrap">&#128228; Upload</button>'
+        ?'<button class="btn btn-'+(window.ytToken?'green':'ghost')+' btn-sm" onclick="event.stopPropagation();uploadQueueItem('+item.id+')" style="white-space:nowrap">&#128228; Run + Upload</button>'
         :'<span style="font-size:10px;color:var(--green);white-space:nowrap">&#10003;&nbsp;Done</span>';
       var runDisabled=item.status==='done'||_pipelineLocked;
       var runBtn=item.status!=='done'
@@ -3567,8 +3652,11 @@ function saveThumbToQueue(){
 
 function uploadQueueItem(id){
   var item=queue.find(function(q){return q.id===id;});if(!item)return;
-  // Check if default channel has a token
-  var hasYouTubeToken = window.ytToken || (_ytChannels && _ytChannels.some(function(c){return c.is_default && c.has_token;}));
+  var targetSlug=item.channel_slug||selectedChannelSlug||'';
+  var hasYouTubeToken = window.ytToken || (_ytChannels && _ytChannels.some(function(c){
+    if(targetSlug){return c.slug===targetSlug&&c.has_token;}
+    return c.is_default&&c.has_token;
+  }));
   if(!hasYouTubeToken){
     var cmd='python main.py "'+item.title.replace(/"/g,'\\"')+'"';
     if(confirm('YouTube not connected yet.\n\nRun this from your terminal to produce & upload via Python pipeline:\n\n'+cmd+'\n\nCopy command to clipboard?')){
@@ -3576,28 +3664,7 @@ function uploadQueueItem(id){
     }
     return;
   }
-  var vidId=prompt('Enter the YouTube Video ID to apply SEO + thumbnail\n(upload must already exist — leave blank to skip):','');
-  if(vidId){
-    document.getElementById('apply-video-id').value=vidId;
-    document.getElementById('thumb-video-id').value=vidId;
-    if(item.hasSEO){
-      document.getElementById('seo-titles').textContent='Option 1: '+item.seoTitle;
-      document.getElementById('seo-desc').textContent=item.seoDescription;
-      document.getElementById('seo-tags-raw').value=item.seoTags;
-      document.getElementById('seo-out').style.display='block';
-      applyToYouTube();
-    }
-    if(item.hasThumb&&item.thumbDataUrl){
-      var img=new Image();
-      img.onload=function(){
-        var cv=document.getElementById('tc');
-        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-        pushThumbnailToYouTube();
-      };
-      img.src=item.thumbDataUrl;
-    }
-  }
-  item.status='done';saveQ();renderQueue();
+  runPipelineForTopic(item,{autoUpload:_isAutoUploadEnabled(),queueItemId:item.id});
 }
 var perfData=[];
 
@@ -3681,10 +3748,16 @@ function loadSettings(){ loadAllSettings(); }
     loadYouTubeChannels(); // populate channel list + upload dropdown
     loadSocialPlatforms(); // populate social platforms list + pipeline toggles
     // Resume global progress bar if pipeline is already running
-    fetch('/api/pipeline/status').then(function(r){return r.json();}).then(function(d){
+    fetchJsonSafe('/api/pipeline/status').then(function(d){
       if(d.status==='running'){gpbStart();}
       else if(d.status==='ready'||d.status==='done'){_gpbUpdate(d);}
     }).catch(function(){});
+    ['cfg-lang','sc-topic','sc-guidance','sc-ctx','sc-dur'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el)return;
+      el.addEventListener('input',_persistDraftContext);
+      el.addEventListener('change',_persistDraftContext);
+    });
     // Check process lock status and refresh periodically
     checkPipelineLock();
     setInterval(checkPipelineLock,15000);
@@ -3720,12 +3793,11 @@ async function initFromEnv(){
 // ── DB auto-loader — pulls live SQLite data from server.py endpoints ──────────
 async function loadFromDB(){
   try{
-    var [statsR, costsR, videosR, yppR, queueR] = await Promise.allSettled([
+    var [statsR, costsR, videosR, yppR] = await Promise.allSettled([
       fetch('/api/db/stats',  {cache:'no-store'}),
       fetch('/api/db/costs',  {cache:'no-store'}),
       fetch('/api/db/videos', {cache:'no-store'}),
       fetch('/api/db/ypp',    {cache:'no-store'}),
-      fetch('/api/db/queue',  {cache:'no-store'}),
     ]);
 
     // ── Channel stats → Performance Tracker ──
@@ -3790,23 +3862,6 @@ async function loadFromDB(){
         _renderDBVideos(videos);
         _usage.videos = videos.filter(function(v){return v.status==='published';}).length;
         document.getElementById('vids-this-month').textContent = _usage.videos;
-      }
-    }
-
-    // ── DB topic queue → merge pending pipeline topics into queue ──
-    if(queueR.status==='fulfilled' && queueR.value.ok){
-      var dbq = await queueR.value.json();
-      if(Array.isArray(dbq) && dbq.length){
-        var added = 0;
-        dbq.forEach(function(row){
-          if((row.status==='pending'||row.status==='processing')&&
-             !queue.find(function(q){return q.title.toLowerCase()===row.topic.toLowerCase();})){
-            addQueueItem(row.topic, row.type||'Planned', {});
-            added++;
-          }
-        });
-        var pending = dbq.filter(function(q){return q.status==='pending'||q.status==='processing';}).length;
-        if(pending) _dbBanner('queue','DB queue: '+pending+' topics ('+added+' new synced)');
       }
     }
 
@@ -4089,7 +4144,8 @@ function saveAllSettings(){
     introDur: document.getElementById('cfg-intro').value,
     outroDur: document.getElementById('cfg-outro').value,
     outroCta: document.getElementById('cfg-outro-cta').value,
-    musicVol: document.getElementById('cfg-music-vol').value
+    musicVol: document.getElementById('cfg-music-vol').value,
+    autoUploadQueue: document.getElementById('cfg-auto-upload-youtube').checked ? 'true' : 'false'
   };
   _dbSave('config', s);
   _dirty = false;
@@ -4149,6 +4205,7 @@ async function loadAllSettings(){
     if(s.outroDur){document.getElementById('cfg-outro').value=s.outroDur;document.getElementById('outro-val').textContent=s.outroDur+'s';}
     if(s.outroCta){document.getElementById('cfg-outro-cta').value=s.outroCta;}
     if(s.musicVol){document.getElementById('cfg-music-vol').value=s.musicVol;document.getElementById('mv-val').textContent=s.musicVol+'dB';}
+    if(s.autoUploadQueue!==undefined){document.getElementById('cfg-auto-upload-youtube').checked=(String(s.autoUploadQueue)==='true');}
     // Update status dots for keys that are set
     if(s.anthropic){setStatus('anthropic','on','Saved');}
     if(s.elevenlabs){setStatus('elevenlabs','on','Saved');}
@@ -4157,6 +4214,7 @@ async function loadAllSettings(){
     updateBudgetBar('anthropic');
     updateELBar();
     updateBudgetOverview();
+    if(all.draft_context){_restoreDraftContext(all.draft_context);}
     // Load YT Automation settings
     if(all.yt_automation) loadYtAutomation(all.yt_automation);
   }catch(e){ console.error('Load settings error:',e); }
@@ -4520,12 +4578,14 @@ function clearThumbBg(){
 var _ytChannels = [];
 
 function loadYouTubeChannels() {
-  fetch('/api/channels').then(function(r){return r.json();}).then(function(d){
-    if(!d.ok) return;
+  fetchJsonSafe('/api/channels').then(function(d){
+    if(!d.ok) throw new Error(d.error||'Failed to load channels');
     _ytChannels = d.channels || [];
     renderChannelList();
     populateChannelDropdown();
-  }).catch(function(){});
+  }).catch(function(e){
+    _setInlineError('yt-channels-list','Could not load channels: '+(e&&e.message?e.message:'unknown error'));
+  });
 }
 
 function renderChannelList() {
@@ -4942,6 +5002,12 @@ function copyDockerCmd(){
 var _plStatus='idle';
 var _plPollTimer=null;
 var _pipelineLocked=false;
+var _plAutoUpload=false;
+var _plAutoUploadTriggered=false;
+var _plQueueItemId=null;
+var _plLastPayload=null;
+var _plLastStatusMsg='';
+var _plPollErrorCount=0;
 var _plStepMap={
   'script':  'pls-script',
   'audio':   'pls-audio',
@@ -4979,7 +5045,36 @@ function _plSetStep(msg){
   }
 }
 
-function runPipelineForTopic(itemOrTopic){
+function _plRenderPayloadSummary(item,payload){
+  var box=document.getElementById('pl-payload-summary');
+  if(!box)return;
+  var channel='Default channel';
+  var slug=payload.channel_slug||'';
+  if(slug&&_ytChannels&&_ytChannels.length){
+    var found=_ytChannels.find(function(c){return c.slug===slug;});
+    if(found){channel=(found.name||found.slug)+' ('+found.slug+')';}
+    else{channel=slug;}
+  }
+  var lines=[];
+  lines.push('Channel: '+channel);
+  lines.push('Language: '+(payload.language||'english'));
+  lines.push('Duration target: '+(payload.duration_hint||'6-8 minutes detailed and engaging'));
+  lines.push('Voice: '+(payload.voice_id||'Channel/global default'));
+  lines.push('Shorts: '+(payload.shortsCount||0));
+  lines.push('Assets: '+[
+    payload.scriptText?'Script':'No script',
+    payload.seoTitle||payload.seoDescription||payload.seoTags?'SEO':'No SEO',
+    payload.thumbDataUrl?'Thumbnail':'No thumbnail'
+  ].join(' · '));
+  lines.push('Auto-upload: '+(_plAutoUpload?'On':'Off'));
+  box.innerHTML=lines.map(function(line){
+    return '<div style="font-size:11px;color:var(--muted);line-height:1.45">'+_escHtml(line)+'</div>';
+  }).join('');
+  box.style.display='block';
+}
+
+function runPipelineForTopic(itemOrTopic, opts){
+  opts=opts||{};
   // Accept either a queue item object or a plain topic string
   var item = (typeof itemOrTopic === 'object' && itemOrTopic !== null) ? itemOrTopic : {title: itemOrTopic};
   var topic = item.title || itemOrTopic;
@@ -5003,6 +5098,7 @@ function runPipelineForTopic(itemOrTopic){
   if(item.hasThumb&&item.thumbDataUrl){hints.push('✓ Custom thumbnail');}
   document.getElementById('pl-status-msg').textContent=hints.length?'Using: '+hints.join(' · '):'Starting pipeline…';
   document.getElementById('pl-error-box').style.display='none';
+  var warn=document.getElementById('pl-warn-box');if(warn)warn.style.display='none';
   document.getElementById('pl-preview-section').style.display='none';
   document.getElementById('pl-done-section').style.display='none';
   document.getElementById('pl-close-btn').disabled=true;
@@ -5010,6 +5106,9 @@ function runPipelineForTopic(itemOrTopic){
     var el=document.getElementById(id);if(el)el.className='pl-step idle';
   });
   _plStatus='running';
+  _plAutoUpload=!!opts.autoUpload;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=opts.queueItemId||item.id||null;
   modal.style.display='flex';
   var payload={topic:topic};
   if(item.scriptText)payload.scriptText=item.scriptText;
@@ -5029,6 +5128,10 @@ function runPipelineForTopic(itemOrTopic){
   if(shortsCheck&&shortsCheck.checked){
     payload.shortsCount=parseInt(document.getElementById('pl-shorts-count').value)||2;
   }
+  _plLastPayload=payload;
+  _plLastStatusMsg='';
+  _plPollErrorCount=0;
+  _plRenderPayloadSummary(item,payload);
   fetchJsonSafe('/api/pipeline/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(d){
       if(!d.ok){_plShowError(d.error||'Failed to start');return;}
@@ -5039,11 +5142,14 @@ function runPipelineForTopic(itemOrTopic){
 }
 
 function _plPoll(){
-  fetch('/api/pipeline/status')
-    .then(function(r){return r.json();})
+  fetchJsonSafe('/api/pipeline/status')
     .then(function(d){
       _plStatus=d.status;
       var msg=d.message||'';
+      _plLastStatusMsg=msg;
+      _plPollErrorCount=0;
+      var warn=document.getElementById('pl-warn-box');
+      if(warn)warn.style.display='none';
       document.getElementById('pl-status-msg').textContent=msg;
       _plSetStep(msg);
       _gpbUpdate(d); // sync global progress bar
@@ -5052,6 +5158,10 @@ function _plPoll(){
         if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
         document.getElementById('pl-close-btn').disabled=false;
         _plShowPreview(d);
+        if(_plAutoUpload&&!_plAutoUploadTriggered){
+          _plAutoUploadTriggered=true;
+          approvePipelineUpload();
+        }
       } else if(d.status==='done'){
         clearInterval(_plPollTimer);_plPollTimer=null;
         if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
@@ -5064,7 +5174,18 @@ function _plPoll(){
         _plShowError(d.error||'Pipeline failed');
       }
     })
-    .catch(function(){/* ignore transient errors */});
+    .catch(function(){
+      _plPollErrorCount+=1;
+      var warn=document.getElementById('pl-warn-box');
+      if(warn){
+        warn.textContent='Connection issue while tracking progress ('+_plPollErrorCount+'). Pipeline may still be running.';
+        warn.style.display='block';
+      }
+      if(_plPollErrorCount>=6){
+        if(_plPollTimer){clearInterval(_plPollTimer);_plPollTimer=null;}
+        _plShowError('Lost connection while tracking pipeline status. Refresh and check Running Jobs.');
+      }
+    });
 }
 
 function _plShowPreview(d){
@@ -5119,14 +5240,31 @@ function _plShowDone(ytUrl){
   var link=document.getElementById('pl-yt-link');
   link.href=ytUrl||'#';
   document.getElementById('pl-done-section').style.display='block';
+  if(_plQueueItemId){
+    var q=queue.find(function(it){return it.id===_plQueueItemId;});
+    if(q){q.status='done';saveQ();renderQueue();}
+  }
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
 }
 
 function _plShowError(msg){
   _plStatus='failed';
   var box=document.getElementById('pl-error-box');
-  box.textContent='✗ '+msg;
+  var details=[];
+  if(_plLastPayload&&_plLastPayload.topic)details.push('Topic: '+_plLastPayload.topic);
+  if(_plLastPayload&&_plLastPayload.channel_slug)details.push('Channel: '+_plLastPayload.channel_slug);
+  if(_plLastStatusMsg)details.push('Last status: '+_plLastStatusMsg);
+  var detailHtml=details.length
+    ?'<div style="margin-top:6px;font-size:11px;color:#fecaca;line-height:1.45">'+details.map(function(d){return _escHtml(d);}).join('<br>')+'</div>'
+    :'';
+  box.innerHTML='<strong>✗ '+_escHtml(msg)+'</strong>'+detailHtml;
   box.style.display='block';
   document.getElementById('pl-close-btn').disabled=false;
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
 }
 
 function approvePipelineUpload(){
@@ -5155,6 +5293,9 @@ function cancelPipeline(){
   if(_plPollTimer){clearInterval(_plPollTimer);_plPollTimer=null;}
   fetch('/api/pipeline/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
   _plStatus='idle';
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
   document.getElementById('pl-modal').style.display='none';
 }
 
@@ -5169,6 +5310,9 @@ function killPipeline(){
         _gpbUpdate({status:'idle'});
         document.getElementById('pl-close-btn').disabled=false;
         _plShowError('Pipeline killed by user.');
+        _plAutoUpload=false;
+        _plAutoUploadTriggered=false;
+        _plQueueItemId=null;
         checkPipelineLock();
       } else {
         alert(d.error||'Failed to kill pipeline');
@@ -5201,7 +5345,7 @@ var _studioClipCount=0;
 function loadStudioVideos(){
   var sel=document.getElementById('stu-video-select');
   sel.innerHTML='<option value="">Loading\u2026</option>';
-  fetch('/api/studio/videos').then(function(r){return r.json();}).then(function(d){
+  fetchJsonSafe('/api/studio/videos').then(function(d){
     _studioVideos=d.videos||[];
     var html='<option value="">\u2014 Select a video \u2014</option>';
     _studioVideos.forEach(function(v){
@@ -5212,18 +5356,23 @@ function loadStudioVideos(){
     _loadStudioChannels();
   }).catch(function(e){
     sel.innerHTML='<option value="">Error loading videos</option>';
+    var st=document.getElementById('stu-upload-main-status');
+    if(st){st.textContent='Failed to load videos: '+(e&&e.message?e.message:'unknown error');st.style.color='var(--red)';}
   });
 }
 
 function _loadStudioChannels(){
-  fetch('/api/channels').then(function(r){return r.json();}).then(function(list){
+  fetchJsonSafe('/api/channels').then(function(list){
     var sel=document.getElementById('stu-channel');
     var html='<option value="">Default</option>';
     ((list && list.channels) || []).forEach(function(ch){
       html+='<option value="'+_escHtml(ch.slug)+'"'+(ch.is_default?' selected':'')+'>'+_escHtml(ch.name)+'</option>';
     });
     sel.innerHTML=html;
-  }).catch(function(){});
+  }).catch(function(e){
+    var st=document.getElementById('stu-upload-main-status');
+    if(st){st.textContent='Failed to load channels: '+(e&&e.message?e.message:'unknown error');st.style.color='var(--red)';}
+  });
 }
 
 function studioVideoChanged(){
@@ -5836,6 +5985,12 @@ function uploadToSocialPlatforms(){
 
     <!-- Status message -->
     <div id="pl-status-msg" style="font-size:12px;color:var(--muted);text-align:center;min-height:18px;margin-bottom:8px"></div>
+
+    <!-- Payload summary -->
+    <div id="pl-payload-summary" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px"></div>
+
+    <!-- Warning box -->
+    <div id="pl-warn-box" style="display:none;background:rgba(247,194,78,.1);border:1px solid rgba(247,194,78,.35);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--amber);margin-bottom:8px"></div>
 
     <!-- Error box -->
     <div id="pl-error-box" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);border-radius:8px;padding:10px 14px;font-size:12px;color:#f87171;margin-bottom:10px"></div>
