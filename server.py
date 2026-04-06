@@ -25,6 +25,7 @@ import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 # ── .env reader ───────────────────────────────────────────────────────────────
 try:
@@ -236,6 +237,10 @@ _pipeline_job: dict = {
 }
 _pipeline_lock = threading.Lock()
 
+# Hosted OAuth pending state for adding YouTube channels from production UI.
+_pending_channel_oauth: dict = {}
+_pending_channel_oauth_lock = threading.Lock()
+
 
 def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, shorts_count=0) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
@@ -357,6 +362,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"jobs": list_jobs()})
         elif path == "/api/channels":
             self._handle_channels_get()
+        elif path == "/api/channels/oauth/callback":
+            self._handle_channel_oauth_callback()
         elif path == "/api/youtube/oauth-diagnostics":
             self._handle_youtube_oauth_diagnostics()
         elif path == "/api/social/platforms":
@@ -779,11 +786,135 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             name = data.get("name", "").strip()
             if not name:
                 self._json_response({"ok": False, "error": "name required"}); return
-            from youtube_uploader import add_channel
-            slug, channel_id = add_channel(name)
-            self._json_response({"ok": True, "slug": slug, "channel_id": channel_id})
+
+            origin = self.headers.get("Origin", "").strip().lower()
+            host = self.headers.get("Host", "").strip().lower()
+            is_railway = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+            is_local_host_header = (
+                host.startswith("localhost")
+                or host.startswith("127.0.0.1")
+                or host.startswith("[::1]")
+            )
+            is_local_origin = (
+                (not origin)
+                or origin.startswith("http://localhost")
+                or origin.startswith("http://127.0.0.1")
+            )
+            use_local_browser_flow = (not is_railway) and is_local_host_header and is_local_origin
+
+            # Localhost can keep using installed-app flow.
+            if use_local_browser_flow:
+                from youtube_uploader import add_channel
+                slug, channel_id = add_channel(name)
+                self._json_response({"ok": True, "slug": slug, "channel_id": channel_id})
+                return
+
+            # Hosted flow: return an OAuth URL to open in browser popup.
+            from config import YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES
+            from google_auth_oauthlib.flow import Flow
+
+            scheme = "https" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else "http"
+            if not origin and host:
+                origin = f"{scheme}://{host}"
+            if not origin:
+                self._json_response({"ok": False, "error": "Cannot resolve dashboard origin for OAuth callback."})
+                return
+
+            redirect_uri = f"{origin}/api/channels/oauth/callback"
+            flow = Flow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, scopes=YOUTUBE_SCOPES)
+            flow.redirect_uri = redirect_uri
+            auth_url, state = flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="consent",
+            )
+            with _pending_channel_oauth_lock:
+                _pending_channel_oauth[state] = {"flow": flow, "name": name}
+
+            self._json_response({
+                "ok": True,
+                "requires_oauth": True,
+                "oauth_url": auth_url,
+                "message": "Open the OAuth popup and finish Google sign-in.",
+            })
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_oauth_callback(self) -> None:
+        """GET /api/channels/oauth/callback — Complete hosted OAuth and save channel token."""
+        if not self._is_request_allowed(require_localhost=False):
+            self.send_response(403)
+            self.end_headers()
+            return
+
+        qs = parse_qs(urlparse(self.path).query)
+        state = (qs.get("state") or [""])[0]
+        error = (qs.get("error") or [""])[0]
+
+        if error:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                f"<h3>Google OAuth Error</h3><p>{error}</p>"
+                "<script>if(window.opener){window.opener.postMessage({type:'yt_channel_added',ok:false,error:'oauth_error'},'*');}window.close();</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        with _pending_channel_oauth_lock:
+            pending = _pending_channel_oauth.pop(state, None)
+
+        if not pending:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                "<h3>OAuth session expired</h3><p>Please try adding the channel again.</p>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(400)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        flow = pending["flow"]
+        channel_name = pending["name"]
+        try:
+            proto = self.headers.get("X-Forwarded-Proto", "https") or "https"
+            host = self.headers.get("Host", "")
+            full_url = f"{proto}://{host}{self.path}"
+            flow.fetch_token(authorization_response=full_url)
+
+            from youtube_uploader import add_channel_from_credentials
+            slug, channel_id = add_channel_from_credentials(channel_name, flow.credentials)
+
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                "<h3>Channel Connected</h3><p>You can close this window now.</p>"
+                f"<script>if(window.opener){{window.opener.postMessage({{type:'yt_channel_added',ok:true,slug:{json.dumps(slug)},channel_id:{json.dumps(channel_id)}}},'*');}}window.close();</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as exc:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                f"<h3>Channel Connect Failed</h3><p>{str(exc)}</p>"
+                "<script>if(window.opener){window.opener.postMessage({type:'yt_channel_added',ok:false,error:'callback_failed'},'*');}</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
     def _handle_channel_set_default(self) -> None:
         """POST /api/channels/default — Set a channel as default."""

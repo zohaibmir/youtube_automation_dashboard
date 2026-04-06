@@ -135,19 +135,32 @@ def set_default_channel(slug: str) -> bool:
 def add_channel(name: str) -> tuple[str, str]:
     """Register a new channel and run OAuth flow.
     Returns (slug, channel_id). Opens browser for auth."""
+    # Run OAuth flow
+    logger.info("Opening browser for YouTube OAuth — channel: %s", name)
+    flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES)
+    creds = flow.run_local_server(port=0)
+
+    return add_channel_from_credentials(name, creds)
+
+
+def add_channel_from_credentials(name: str, creds: Credentials) -> tuple[str, str]:
+    """Register a channel from pre-authorized credentials.
+    Useful for hosted OAuth callback flows where browser auth happens client-side."""
     slug = name.lower().replace(" ", "-").replace("/", "-")
     slug = "".join(c for c in slug if c.isalnum() or c == "-")[:40]
 
     _ensure_tokens_dir()
     channels = _load_channels()
 
+    # Ensure slug uniqueness
+    base_slug = slug or "channel"
+    idx = 2
+    while slug in channels:
+        slug = f"{base_slug}-{idx}"
+        idx += 1
+
     token_file = f"{slug}.json"
     token_path = os.path.join(_TOKENS_DIR, token_file)
-
-    # Run OAuth flow
-    logger.info("Opening browser for YouTube OAuth — channel: %s", name)
-    flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES)
-    creds = flow.run_local_server(port=0)
 
     # Save token
     with open(token_path, "w") as f:

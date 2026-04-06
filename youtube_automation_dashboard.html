@@ -4352,6 +4352,40 @@ function addYouTubeChannel() {
   fetch('/api/channels/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name})})
     .then(function(r){return r.json();})
     .then(function(d){
+      if (d.ok && d.requires_oauth && d.oauth_url) {
+        var popup = window.open(d.oauth_url, 'yt-oauth', 'width=560,height=720');
+        if (!popup) {
+          btn.disabled = false; btn.textContent = '+ Add Channel';
+          alert('Popup was blocked. Please allow popups for this site and try again.');
+          return;
+        }
+        var cleanup = function(){
+          window.removeEventListener('message', onMsg);
+          if (pollTimer) clearInterval(pollTimer);
+          btn.disabled = false; btn.textContent = '+ Add Channel';
+        };
+        var onMsg = function(ev){
+          var msg = ev && ev.data;
+          if (!msg || msg.type !== 'yt_channel_added') return;
+          cleanup();
+          if (msg.ok) {
+            nameInput.value = '';
+            loadYouTubeChannels();
+            alert('Channel connected successfully.');
+          } else {
+            alert('Channel connection failed. Please try again.');
+          }
+        };
+        var pollTimer = setInterval(function(){
+          if (popup.closed) {
+            cleanup();
+            loadYouTubeChannels();
+          }
+        }, 600);
+        window.addEventListener('message', onMsg);
+        return;
+      }
+
       btn.disabled = false; btn.textContent = '+ Add Channel';
       if (d.ok) {
         nameInput.value = '';
