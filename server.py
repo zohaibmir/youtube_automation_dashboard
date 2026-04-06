@@ -156,6 +156,7 @@ _EXPOSED_KEYS = {
     "TTS_PROVIDER", "EDGE_TTS_VOICE",
     "KEN_BURNS_ZOOM", "CROSSFADE_DURATION", "BG_MUSIC_VOLUME_DB",
     "BG_MUSIC_PATH", "INTRO_DURATION", "OUTRO_DURATION", "OUTRO_CTA_TEXT",
+    "KLING_API_KEY", "KLING_API_SECRET",
 }
 
 _ENV_PATH = str(Path(__file__).parent / ".env")
@@ -176,6 +177,7 @@ _PUBLIC_STATIC_PREFIXES = (
     "/images/",
     "/branding/",
     "/music/",
+    "/output/shorts_animated/",
 )
 _BLOCKED_STATIC_PREFIXES = (
     "/.git",
@@ -235,6 +237,10 @@ _pipeline_job: dict = {
     "_shorts_paths": [],
 }
 _pipeline_lock = threading.Lock()
+
+# ── Animated shorts job state ─────────────────────────────────────────────────
+# { job_id: { status, topic, paths, error } }
+_shorts_jobs: dict = {}
 
 
 def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, shorts_count=0) -> None:
@@ -341,6 +347,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_videos_get()
         elif path.startswith("/api/studio/info/"):
             self._handle_studio_video_info(path)
+        elif path == "/api/shorts/status":
+            self._handle_shorts_status()
+        elif path == "/api/shorts/list":
+            self._handle_shorts_list()
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -404,6 +414,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_upload_clips()
         elif path == "/api/community-post/generate":
             self._handle_community_post_generate()
+        elif path == "/api/shorts/generate-animated":
+            self._handle_shorts_generate_animated()
+        elif path == "/api/shorts/pipeline/run":
+            self._handle_shorts_pipeline_run()
+        elif path == "/api/shorts/distribute":
+            self._handle_shorts_distribute()
         else:
             self.send_response(404)
             self.end_headers()
@@ -564,6 +580,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             data = json.loads(self.rfile.read(length)) if length else {}
             # Map of dashboard field → .env key
             env_map = {
+                "anthropic":      "ANTHROPIC_API_KEY",
+                "elevenlabs":     "ELEVENLABS_API_KEY",
+                "pexels":         "PEXELS_API_KEY",
+                "voiceId":        "ELEVENLABS_VOICE_ID",
+                "voiceStab":      "VOICE_STABILITY",
+                "voiceSim":       "VOICE_SIMILARITY",
+                "voiceStyle":     "VOICE_STYLE",
+                "klingKey":       "KLING_API_KEY",
+                "klingSecret":    "KLING_API_SECRET",
                 "channelName":    "CHANNEL_NAME",
                 "outroCta":       "OUTRO_CTA_TEXT",
                 "introDur":       "INTRO_DURATION",
@@ -1108,6 +1133,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "anthropic": "ANTHROPIC_API_KEY",
                 "elevenlabs": "ELEVENLABS_API_KEY",
                 "pexels": "PEXELS_API_KEY",
+                "klingKey": "KLING_API_KEY",
+                "klingSecret": "KLING_API_SECRET",
                 "voiceId": "ELEVENLABS_VOICE_ID",
                 "voiceStab": "VOICE_STABILITY",
                 "voiceSim": "VOICE_SIMILARITY",
@@ -1156,6 +1183,223 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "http://localhost:8080")
         self.end_headers()
         self.wfile.write(body)
+
+    # ── Animated Shorts handlers ───────────────────────────────────────────────
+
+    def _handle_shorts_generate_animated(self) -> None:
+        """POST /api/shorts/generate-animated
+        Body: { topic, hooks: [str, ...], aspect_ratio?: "9:16"|"16:9" }
+        Launches background generation, returns job_id immediately.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            topic = (data.get("topic") or "").strip()
+            hooks = data.get("hooks") or []
+            aspect = data.get("aspect_ratio", "9:16")
+            if not topic:
+                self._json_response({"ok": False, "error": "topic required"}); return
+            if not hooks:
+                # Build default hooks from topic using Claude
+                hooks = [
+                    f"Opening scene: {topic}, dramatic establishing shot",
+                    f"Key insight: {topic}, close-up detail with motion",
+                    f"Call to action related to: {topic}",
+                ]
+            import uuid as _uuid, threading as _t
+            job_id = str(_uuid.uuid4())[:8]
+            out_dir = os.path.join("output", "shorts_animated", job_id)
+            os.makedirs(out_dir, exist_ok=True)
+
+            _shorts_jobs[job_id] = {
+                "status": "generating",
+                "phase": "queued",
+                "progress": 0,
+                "topic": topic,
+                "paths": [],
+                "results": [],
+                "error": None,
+            }
+
+            def _bg():
+                try:
+                    from shorts_pipeline import run_animated_shorts_pipeline
+
+                    def _progress(phase: str, pct: int):
+                        _shorts_jobs[job_id].update({"phase": phase, "progress": pct})
+
+                    out = run_animated_shorts_pipeline(
+                        topic=topic,
+                        hooks=hooks,
+                        out_dir=out_dir,
+                        aspect_ratio=aspect,
+                        progress_cb=_progress,
+                    )
+                    _shorts_jobs[job_id].update({
+                        "status": "ready",
+                        "phase": "done",
+                        "progress": 100,
+                        "paths": out.get("paths", []),
+                    })
+                except Exception as e:
+                    _shorts_jobs[job_id].update({"status": "failed", "error": str(e)})
+
+            _t.Thread(target=_bg, daemon=True).start()
+            self._json_response({"ok": True, "job_id": job_id})
+        except Exception as ex:
+            self._json_response({"ok": False, "error": str(ex)})
+
+    def _handle_shorts_status(self) -> None:
+        """GET /api/shorts/status?job_id=xxx"""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        job_id = (qs.get("job_id") or [""])[0]
+        if not job_id or job_id not in _shorts_jobs:
+            self._json_response({"status": "not_found", "paths": []}); return
+        job = _shorts_jobs[job_id]
+        # Accept either local filesystem paths or already-relative web paths.
+        web_paths = []
+        for p in job.get("paths", []):
+            if str(p).startswith("/"):
+                web_paths.append(p)
+            else:
+                web_paths.append("/output/shorts_animated/" + job_id + "/" + os.path.basename(p))
+        self._json_response({
+            "status": job["status"],
+            "phase": job.get("phase", ""),
+            "progress": job.get("progress", 0),
+            "topic": job.get("topic", ""),
+            "paths": web_paths,
+            "results": job.get("results", []),
+            "error": job.get("error"),
+        })
+
+    def _handle_shorts_pipeline_run(self) -> None:
+        """POST /api/shorts/pipeline/run
+        Body: {
+          topic,
+          hooks?: [str,...],
+          aspect_ratio?: "9:16"|"16:9"|"1:1",
+          platforms?: ["youtube","instagram","facebook","tiktok"],
+          title?: str,
+          description?: str,
+          tags?: [str,...],
+        }
+        Runs dedicated shorts-only generation and optional distribution.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            topic = (data.get("topic") or "").strip()
+            hooks = data.get("hooks") or []
+            aspect = data.get("aspect_ratio", "9:16")
+            platforms = data.get("platforms") or []
+            title = (data.get("title") or topic or "AI Animated Short").strip()
+            description = (data.get("description") or "").strip()
+            tags = data.get("tags") or []
+
+            if not topic:
+                self._json_response({"ok": False, "error": "topic required"}); return
+            if not hooks:
+                hooks = [
+                    f"Opening scene: {topic}, dramatic establishing shot",
+                    f"Key insight: {topic}, close-up detail with motion",
+                    f"Call to action related to: {topic}",
+                ]
+
+            import uuid as _uuid, threading as _t
+            job_id = str(_uuid.uuid4())[:8]
+            out_dir = os.path.join("output", "shorts_animated", job_id)
+            os.makedirs(out_dir, exist_ok=True)
+
+            _shorts_jobs[job_id] = {
+                "status": "generating",
+                "phase": "queued",
+                "progress": 0,
+                "topic": topic,
+                "paths": [],
+                "results": [],
+                "error": None,
+            }
+
+            def _bg():
+                try:
+                    from shorts_pipeline import run_animated_shorts_pipeline
+
+                    def _progress(phase: str, pct: int):
+                        _shorts_jobs[job_id].update({"phase": phase, "progress": pct})
+
+                    out = run_animated_shorts_pipeline(
+                        topic=topic,
+                        hooks=hooks,
+                        out_dir=out_dir,
+                        aspect_ratio=aspect,
+                        platforms=platforms,
+                        title=title,
+                        description=description,
+                        tags=tags,
+                        progress_cb=_progress,
+                    )
+                    _shorts_jobs[job_id].update({
+                        "status": "ready",
+                        "phase": "done",
+                        "progress": 100,
+                        "paths": out.get("paths", []),
+                        "results": out.get("results", []),
+                    })
+                except Exception as ex:
+                    _shorts_jobs[job_id].update({"status": "failed", "error": str(ex)})
+
+            _t.Thread(target=_bg, daemon=True).start()
+            self._json_response({"ok": True, "job_id": job_id})
+        except Exception as ex:
+            self._json_response({"ok": False, "error": str(ex)})
+
+    def _handle_shorts_list(self) -> None:
+        """GET /api/shorts/list — list existing generated animated shorts."""
+        base = os.path.join("output", "shorts_animated")
+        result = []
+        if os.path.isdir(base):
+            for job_id in sorted(os.listdir(base), reverse=True)[:20]:
+                job_dir = os.path.join(base, job_id)
+                if not os.path.isdir(job_dir):
+                    continue
+                clips = [f for f in os.listdir(job_dir) if f.endswith(".mp4")]
+                if clips:
+                    result.append({
+                        "job_id": job_id,
+                        "clips": [f"/output/shorts_animated/{job_id}/{c}" for c in sorted(clips)],
+                        "count": len(clips),
+                    })
+        self._json_response({"ok": True, "shorts": result})
+
+    def _handle_shorts_distribute(self) -> None:
+        """POST /api/shorts/distribute
+        Body: { paths: [str], platforms: ["youtube","instagram","facebook","tiktok"] }
+        Uploads each clip to the selected platforms.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            clip_paths = data.get("paths", [])
+            platforms = data.get("platforms", [])
+            title = (data.get("title") or "AI Animated Short").strip()
+            description = (data.get("description") or "").strip()
+            tags = data.get("tags", [])
+            if not clip_paths:
+                self._json_response({"ok": False, "error": "No clips provided"}); return
+            from shorts_pipeline import distribute_shorts
+            results = distribute_shorts(
+                clip_paths=clip_paths,
+                platforms=platforms,
+                title=title,
+                description=description,
+                tags=tags,
+            )
+
+            self._json_response({"ok": True, "results": results})
+        except Exception as ex:
+            self._json_response({"ok": False, "error": str(ex)})
 
     def log_message(self, fmt: str, *args) -> None:
         path = args[0] if args else ""

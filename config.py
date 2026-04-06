@@ -49,10 +49,17 @@ VOICE_STYLE: float = float(os.getenv("VOICE_STYLE", "0.35"))
 # Requires ffmpeg. Set to 1.0 to disable post-processing.
 GTTS_SPEECH_RATE: float = float(os.getenv("GTTS_SPEECH_RATE", "1.15"))
 
+# ── Kling AI (animated visuals) ─────────────────────────────────────────────
+# Sign up at https://klingai.com/dev → create an API key pair.
+# Used when VISUAL_MODE=animated to generate per-segment AI animation clips.
+KLING_API_KEY: str = os.getenv("KLING_API_KEY", "")
+KLING_API_SECRET: str = os.getenv("KLING_API_SECRET", "")
+
 # ── Visual Mode ───────────────────────────────────────────────────────────────
-# images = static Pexels images (default, fast)
-# videos = Pexels video clips (better quality, larger downloads)
-VISUAL_MODE: str = os.getenv("VISUAL_MODE", "images")  # images | videos
+# images   = static Pexels images (default, fast, free)
+# videos   = Pexels MP4 clips (better quality, free)
+# animated = Kling AI generated animation per segment (~$0.14/clip, requires KLING_API_KEY)
+VISUAL_MODE: str = os.getenv("VISUAL_MODE", "images")  # images | videos | animated
 
 # ── Video Production ──────────────────────────────────────────────────────────
 # Ken Burns slow-zoom percentage per clip (0.0 = disabled, 0.05 = 5% zoom)

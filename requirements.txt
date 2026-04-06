@@ -14,3 +14,4 @@ schedule>=1.2.0
 imageio>=2.31.0
 imageio-ffmpeg>=0.4.9
 praw>=7.7.0
+PyJWT>=2.8.0

@@ -476,7 +476,12 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         _p(f"Fetching visuals ({VISUAL_MODE}) for {len(segments)} segments…")
-        if VISUAL_MODE == "videos":
+        if VISUAL_MODE == "animated":
+            from animated_visual_fetcher import fetch_animated_clips
+            visual_files = fetch_animated_clips(segments, out_dir=images_dir)
+            clip_cost = len(segments) * 0.14
+            log_cost("kling", "text2video", units=len(segments), cost_usd=clip_cost, video_id=vid_id)
+        elif VISUAL_MODE == "videos":
             visual_files = fetch_segment_videos(segments, out_dir=images_dir)
             log_cost("pexels", "video_search", units=len(segments), cost_usd=0.0, video_id=vid_id)
         else:
