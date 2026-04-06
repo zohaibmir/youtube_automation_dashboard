@@ -2,7 +2,11 @@
 FROM python:3.11-slim AS base
 
 # Install FFmpeg and system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends     ffmpeg     fonts-dejavu-core     curl     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	ffmpeg \
+	fonts-dejavu-core \
+	curl \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -12,13 +16,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 3: copy app code ────────────────────────────────────
 COPY *.py ./
+COPY *.html ./
+COPY core ./core
+COPY branding ./branding
 
 # Create persistent directories (mounted as volumes)
-RUN mkdir -p audio images output
+RUN mkdir -p audio images output data branding
 
 # ── Runtime ───────────────────────────────────────────────────
-# Default: run scheduler. Override with: docker run ... python main.py "topic"
-CMD ["python", "scheduler.py"]
+# Default: run dashboard server. Override per-platform or per-service with START_CMD.
+CMD ["sh", "-lc", "${START_CMD:-python server.py}"]
 
 # ── Build & run ───────────────────────────────────────────────
 # docker build -t yt-automation .

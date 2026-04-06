@@ -40,9 +40,15 @@ def refill_queue() -> None:
     if pending_count() >= _REFILL_THRESHOLD:
         return
     logger.info("Queue low — generating new topics...")
-    topics = generate_topic_ideas(count=10)
-    added = enqueue_topics(topics)
-    logger.info("Added %d topics to the queue", added)
+    try:
+        topics = generate_topic_ideas(count=10)
+        if not topics:
+            logger.warning("Queue refill returned no topics")
+            return
+        added = enqueue_topics(topics)
+        logger.info("Added %d topics to the queue", added)
+    except Exception as exc:
+        logger.error("Queue refill failed: %s", exc)
 
 
 def publish_next() -> None:

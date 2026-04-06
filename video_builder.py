@@ -390,12 +390,22 @@ def build_video(
 
         if ext == ".mp4":
             # ── Video clip — FFmpeg normalises to 1920×1080 (no Python per-frame resize)
-            norm_path = _ffmpeg_prepare_video(visual_path, duration)
-            raw = VideoFileClip(norm_path, audio=False)
-            if raw.duration < duration - 0.05:
-                loops = int(duration / raw.duration) + 1
-                raw = concatenate_videoclips([raw] * loops)
-            base = raw.subclip(0, duration)
+            try:
+                norm_path = _ffmpeg_prepare_video(visual_path, duration)
+                raw = VideoFileClip(norm_path, audio=False)
+                if raw.duration < duration - 0.05:
+                    loops = int(duration / raw.duration) + 1
+                    raw = concatenate_videoclips([raw] * loops)
+                base = raw.subclip(0, duration)
+            except Exception as exc:
+                logger.warning(
+                    "Corrupted/unreadable visual clip '%s' at segment %d — using fallback color clip: %s",
+                    visual_path,
+                    i,
+                    exc,
+                )
+                # Keep pipeline alive even if one downloaded stock clip is broken.
+                base = ColorClip(size=(_VIDEO_WIDTH, _VIDEO_HEIGHT), color=(18, 22, 30)).set_duration(duration)
         else:
             # ── Static image ──────────────────────────────────────────────────
             base = (

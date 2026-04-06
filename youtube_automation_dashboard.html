@@ -877,9 +877,11 @@ canvas{display:block;width:100%;height:auto}
     </div>
     <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:5px">
       <button class="btn btn-green btn-sm" onclick="connectYouTube()">&#128279; Connect YouTube</button>
+      <button class="btn btn-ghost btn-sm" onclick="checkYouTubeOAuthSetup()">&#128269; Check OAuth Setup</button>
       <div id="yt-connect-status" style="font-size:11px;color:var(--muted)">Not connected — enter Client ID and click Connect</div>
     </div>
   </div>
+  <div id="yt-oauth-diag" style="display:none;margin-top:8px;padding:9px 11px;background:rgba(124,109,250,0.07);border:1px solid rgba(124,109,250,0.2);border-radius:7px;font-size:11px;color:var(--muted);line-height:1.6"></div>
 
   <div class="s-howto">
     <button class="s-howto-btn" onclick="toggleHowto('youtube')">&#9660; Step-by-step setup guide</button>
@@ -2818,6 +2820,23 @@ function parseJSON(raw,br){
   return JSON.parse(raw.slice(s,e));
 }
 
+async function fetchJsonSafe(url, opts){
+  var res = await fetch(url, opts || {});
+  var raw = await res.text();
+  var data = null;
+  if(raw){
+    try { data = JSON.parse(raw); } catch(_e) { data = null; }
+  }
+  if(!res.ok){
+    var msg = (data && (data.error || data.message)) || ('HTTP '+res.status);
+    throw new Error(msg);
+  }
+  if(!data){
+    throw new Error('Server returned an empty response');
+  }
+  return data;
+}
+
 // ===== TRENDING (with web search) =====
 var trendData=[];
 var _trendActiveBtn=null;
@@ -3223,9 +3242,13 @@ function renderQueue(){
       var uploadBtn=item.status!=='done'
         ?'<button class="btn btn-'+(window.ytToken?'green':'ghost')+' btn-sm" onclick="event.stopPropagation();uploadQueueItem('+item.id+')" style="white-space:nowrap">&#128228; Upload</button>'
         :'<span style="font-size:10px;color:var(--green);white-space:nowrap">&#10003;&nbsp;Done</span>';
+      var runDisabled=item.status==='done'||_pipelineLocked;
       var runBtn=item.status!=='done'
-        ?'<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();runPipelineForTopic(queue.find(function(q){return q.id==='+item.id+';}))" style="white-space:nowrap" title="Generate video locally, preview, then upload">&#9654; Run</button>'
+        ?'<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();runPipelineForTopic(queue.find(function(q){return q.id==='+item.id+';}))" style="white-space:nowrap" title="Generate video locally, preview, then upload" '+(runDisabled?'disabled':'')+'>&#9654; Run</button>'
         :'';
+      var runMsg=_pipelineLocked&&item.status!=='done'
+        ?'<div id="qrun-msg-'+item.id+'" style="font-size:10px;color:var(--amber)">Pipeline already running</div>'
+        :'<div id="qrun-msg-'+item.id+'" style="display:none;font-size:10px;color:var(--amber)"></div>';
       var d=document.createElement('div');
       d.className='q-card'+(item.status==='done'?' q-done':'');
       d.id='qc-'+item.id;
@@ -3239,6 +3262,7 @@ function renderQueue(){
           +'</div>'
           +'<div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end">'
             +runBtn
+            +runMsg
             +uploadBtn
             +'<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();removeQItem('+item.id+')" style="padding:3px 7px">&#10005;</button>'
           +'</div>'
@@ -4359,7 +4383,11 @@ var ytToken=null,ytTokenClient=null;
 
 function connectYouTube(){
   var clientId=document.getElementById('yt-client-id').value.trim();
-  if(!clientId){alert('Enter your YouTube OAuth Client ID in Settings first.\n\nGet it from: Google Cloud Console → Credentials → Create OAuth 2.0 Client ID → Web Application\nThen add http://localhost:8080 as Authorized JavaScript origin.');return;}
+  if(!clientId){
+    var origin = (window && window.location && window.location.origin) ? window.location.origin : 'http://localhost:8080';
+    alert('Enter your YouTube OAuth Client ID in Settings first.\n\nGet it from: Google Cloud Console → Credentials → Create OAuth 2.0 Client ID → Web Application\nThen add ' + origin + ' as Authorized JavaScript origin.');
+    return;
+  }
   if(typeof google==='undefined'||!google.accounts||!google.accounts.oauth2){
     alert('Google Identity Services library not loaded.\nCheck your internet connection and refresh the page.');return;
   }
@@ -4379,6 +4407,41 @@ function connectYouTube(){
     }
   });
   ytTokenClient.requestAccessToken();
+}
+
+async function checkYouTubeOAuthSetup(){
+  var box = document.getElementById('yt-oauth-diag');
+  if(!box) return;
+  box.style.display = 'block';
+  box.innerHTML = 'Checking OAuth setup…';
+  try{
+    var r = await fetch('/api/youtube/oauth-diagnostics', {cache:'no-store'});
+    if(!r.ok){ box.innerHTML = 'Could not read diagnostics (HTTP '+r.status+').'; return; }
+    var d = await r.json();
+    var lines = [];
+    lines.push('<strong style="color:var(--accent)">OAuth diagnostics</strong>');
+    lines.push('Origin: <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">'+(d.origin||'unknown')+'</code>');
+    lines.push('Web Client ID in server env: '+(d.web_client_id && d.web_client_id.present ? '<span style="color:var(--green)">✓ present</span>' : '<span style="color:var(--red)">✗ missing</span>'));
+    if(d.web_client_id && d.web_client_id.masked){
+      lines.push('Client ID (masked): <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">'+d.web_client_id.masked+'</code>');
+    }
+    lines.push('client_secrets.json: '+(d.desktop_client_secrets && d.desktop_client_secrets.exists ? '<span style="color:var(--green)">✓ found</span>' : '<span style="color:var(--red)">✗ missing</span>')+' <span style="color:var(--dim)">('+(d.desktop_client_secrets ? d.desktop_client_secrets.path : '')+')</span>');
+    if(Array.isArray(d.channels) && d.channels.length){
+      var good = d.channels.filter(function(c){return c.has_token;}).length;
+      lines.push('Server upload tokens: <span style="color:'+(good ? 'var(--green)' : 'var(--red)')+'">'+good+'/'+d.channels.length+' channels</span>');
+      var def = d.channels.find(function(c){return c.is_default;});
+      if(def) lines.push('Default upload channel: <strong>'+(def.name||def.slug)+'</strong>');
+    }
+    if(d.required_google_console && Array.isArray(d.required_google_console.authorized_javascript_origins) && d.required_google_console.authorized_javascript_origins.length){
+      lines.push('Add this origin in Google Cloud OAuth Web client: <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">'+d.required_google_console.authorized_javascript_origins[0]+'</code>');
+    }
+    if(Array.isArray(d.tips) && d.tips.length){
+      lines.push('<span style="color:var(--amber)">Next steps:</span> '+d.tips.join(' | '));
+    }
+    box.innerHTML = lines.join('<br/>');
+  }catch(e){
+    box.innerHTML = 'OAuth diagnostics failed: '+e.message;
+  }
 }
 
 async function applyToYouTube(){
@@ -4468,6 +4531,7 @@ function copyDockerCmd(){
 // ── Pipeline preview ──────────────────────────────────────────────────────────
 var _plStatus='idle';
 var _plPollTimer=null;
+var _pipelineLocked=false;
 var _plStepMap={
   'script':  'pls-script',
   'audio':   'pls-audio',
@@ -4509,6 +4573,16 @@ function runPipelineForTopic(itemOrTopic){
   // Accept either a queue item object or a plain topic string
   var item = (typeof itemOrTopic === 'object' && itemOrTopic !== null) ? itemOrTopic : {title: itemOrTopic};
   var topic = item.title || itemOrTopic;
+  if(_pipelineLocked){
+    var msgEl = item && item.id ? document.getElementById('qrun-msg-'+item.id) : null;
+    if(msgEl){
+      msgEl.style.display='block';
+      msgEl.textContent='Pipeline already running';
+    } else {
+      alert('Pipeline already running. Please wait for current job to finish.');
+    }
+    return;
+  }
   var modal=document.getElementById('pl-modal');
   if(!modal)return;
   document.getElementById('pl-topic-label').textContent='Topic: '+topic;
@@ -4541,8 +4615,7 @@ function runPipelineForTopic(itemOrTopic){
   if(shortsCheck&&shortsCheck.checked){
     payload.shortsCount=parseInt(document.getElementById('pl-shorts-count').value)||2;
   }
-  fetch('/api/pipeline/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
-    .then(function(r){return r.json();})
+  fetchJsonSafe('/api/pipeline/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(d){
       if(!d.ok){_plShowError(d.error||'Failed to start');return;}
       _plPollTimer=setInterval(_plPoll,2500);
@@ -4648,8 +4721,7 @@ function approvePipelineUpload(){
   var selectedChannel=channelSel?channelSel.value:'';
   if(_ytChannels.length>0 && !selectedChannel){alert('Select a channel to upload to.');return;}
   btn.disabled=true;btn.textContent='Uploading…';
-  fetch('/api/pipeline/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:selectedChannel||null})})
-    .then(function(r){return r.json();})
+  fetchJsonSafe('/api/pipeline/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:selectedChannel||null})})
     .then(function(d){
       if(d.ok){
         _plShowDone(d.youtube_url);
@@ -4674,8 +4746,7 @@ function cancelPipeline(){
 
 function killPipeline(){
   if(!confirm('Kill the running pipeline process? This will stop video generation immediately.'))return;
-  fetch('/api/pipeline/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
-    .then(function(r){return r.json();})
+  fetchJsonSafe('/api/pipeline/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
     .then(function(d){
       if(d.ok){
         _plStatus='idle';
@@ -4696,11 +4767,14 @@ function checkPipelineLock(){
     var ind=document.getElementById('pipeline-lock-indicator');
     if(!ind)return;
     if(d.running){
+      _pipelineLocked=true;
       ind.style.display='inline-flex';
       ind.innerHTML='<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:5px;animation:pulse 1.5s infinite"></span>Pipeline running (PID '+d.pid+')';
     } else {
+      _pipelineLocked=false;
       ind.style.display='none';
     }
+    renderQueue();
   }).catch(function(){});
 }
 

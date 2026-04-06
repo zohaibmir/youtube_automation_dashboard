@@ -1,0 +1,16 @@
+[Unit]
+Description=YouTube Automation Scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -lc 'source __APP_DIR__/.venv/bin/activate && python3 scheduler.py'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

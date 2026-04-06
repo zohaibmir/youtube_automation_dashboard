@@ -278,6 +278,65 @@ Start with:
 - `scheduler-verification`
 - `queue-dashboard-wiring`
 
+---
+
+## 30-Day Growth Plan (1 Long + 2 Shorts Daily)
+
+This repo now includes a ready-to-run 30-day content plan and queue seeder:
+
+- Playbook: `docs/GROWTH_PLAYBOOK_30_DAYS.md`
+- Calendar: `data/content_plan_30_days.csv`
+- Seeder script: `scripts/seed_30_day_content.py`
+
+### Seed the 30-day queue
+
+```bash
+source .venv/bin/activate
+python3 scripts/seed_30_day_content.py --start-date 2026-04-06
+```
+
+### Daily run target (1 long + 2 shorts)
+
+```bash
+source .venv/bin/activate
+python3 scripts/run_pipeline.py --minutes 8 --language english --shorts 2 "<topic>"
+```
+
+Tip: use `--dry-run` on the seed script to preview all queue entries before writing to the database.
+
+---
+
+## Free Hosting Options
+
+This project includes long-running jobs (video generation and uploads), so fully free hosting has limits.
+
+Detailed Oracle deployment guide:
+
+- `docs/ORACLE_ALWAYS_FREE_DEPLOY.md`
+- `deploy/oracle/setup_oracle_vm.sh`
+- `deploy/oracle/yt-server.service.template`
+- `deploy/oracle/yt-scheduler.service.template`
+
+Best free or near-free options:
+
+1. Oracle Cloud Always Free VM (best fit)
+    - Closest to your current setup (always-on Python service + scheduler + local files).
+    - Can run `server.py`, scheduler, and queue worker continuously.
+
+2. Render free web service (dashboard only, limited)
+    - Easy deploy for API/dashboard preview.
+    - Free tier sleeps and is not ideal for long video processing jobs.
+
+3. Railway trial credits / low-cost tiers
+    - Good developer experience.
+    - Usually not permanently free for sustained workloads.
+
+4. Fly.io small instance with free allowances (region/account dependent)
+    - Better for always-on than sleep-based free tiers.
+    - Free quota can be exhausted quickly with media workloads.
+
+For reliable daily automation, a low-cost VPS is typically more stable than sleep-based free tiers.
+
 ### Quick start for this setup
 
 1. Open VS Code in this workspace.
