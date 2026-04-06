@@ -43,3 +43,11 @@ build/
 runs/
 .jobs/
 *TEMP_MPY*
+
+# ── Personal / private files — not for public repo ───────────
+terminal.md
+COPILOT_BEGINNER_GUIDE.md
+_run_test_pipeline.py
+branding/channel_avatar.png
+branding/channel_banner.png
+branding/watermark.png
