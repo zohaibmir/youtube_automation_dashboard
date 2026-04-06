@@ -245,7 +245,7 @@ _pending_channel_oauth: dict = {}
 _pending_channel_oauth_lock = threading.Lock()
 
 
-def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, voice_id=None, shorts_count=0, channel_slug=None) -> None:
+def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, voice_id=None, shorts_count=0, channel_slug=None, language=None) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
     try:
         from pipeline import run_preview
@@ -262,7 +262,8 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
         video_path, thumb_path, content, vid_id = run_preview(
             topic, progress_cb=_progress,
             script_text=script_text, seo=seo, thumb_data_url=thumb_data_url,
-            guidance=guidance, voice_id=voice_id, shorts_count=shorts_count,
+            channel_slug=channel_slug, guidance=guidance, voice_id=voice_id,
+            shorts_count=shorts_count, language=language,
         )
         slug = video_path.replace("\\", "/").split("/")[-1]  # just the filename
         shorts_paths = content.pop("_shorts_paths", [])
@@ -494,6 +495,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             thumb_data_url = data.get("thumbDataUrl", "").strip() or None
             guidance       = data.get("guidance", "").strip() or None
             voice_id       = data.get("voice_id", "").strip() or None
+            language       = data.get("language", "").strip() or None
             shorts_count   = int(data.get("shortsCount", 0) or 0)
             seo = None
             if seo_title or seo_description or seo_tags_raw:
@@ -506,7 +508,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 target=_run_pipeline_bg,
                 args=(topic,),
                 kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url,
-                        "guidance": guidance, "voice_id": voice_id, "shorts_count": shorts_count, "channel_slug": channel_slug},
+                    "guidance": guidance, "voice_id": voice_id, "shorts_count": shorts_count,
+                    "channel_slug": channel_slug, "language": language},
                 daemon=True,
             )
             t.start()

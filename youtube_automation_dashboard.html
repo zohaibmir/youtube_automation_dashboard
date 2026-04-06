@@ -2935,6 +2935,7 @@ function copyVal(id,btn){
 function getNiche(){return document.getElementById('cfg-niche').value;}
 function getAud(){return document.getElementById('cfg-audience').value;}
 function getLang(){return document.getElementById('cfg-lang').value;}
+function getCurrentPipelineLanguage(){return getLang()||selectedChannelLanguage||'english';}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function parseJSON(raw,br){
   var o=br==='['?'[':'{',c=br==='['?']':'}';
@@ -3296,8 +3297,9 @@ function addScriptToQueue(){
   var scriptText=(document.getElementById('sc-text').textContent||'').trim();
   var guidance=(document.getElementById('sc-guidance').value||'').trim();
   var hasSEO=(document.getElementById('seo-out').style.display!=='none');
-  var meta={hasScript:!!scriptText, scriptText:scriptText};
+  var meta={hasScript:!!scriptText, scriptText:scriptText, language:getCurrentPipelineLanguage()};
   if(guidance)meta.guidance=guidance;
+  if(selectedChannelSlug)meta.channel_slug=selectedChannelSlug;
   if(hasSEO){
     var titles=(document.getElementById('seo-titles').textContent||'').split('\n');
     meta.hasSEO=true;
@@ -3365,7 +3367,8 @@ function addQueueItem(title,type,meta){
     seoTitle:meta.seoTitle||'',seoDescription:meta.seoDescription||'',
     seoTags:meta.seoTags||'',thumbDataUrl:meta.thumbDataUrl||'',
     voice_id:meta.voice_id||'',
-    channel_slug:meta.channel_slug||'',
+    channel_slug:meta.channel_slug||selectedChannelSlug||'',
+    language:meta.language||getCurrentPipelineLanguage(),
     hasScript:meta.hasScript||false,hasSEO:meta.hasSEO||false,hasThumb:meta.hasThumb||false
   });
   saveQ();renderQueue();
@@ -3374,7 +3377,7 @@ function addManualToQueue(){
   var t=document.getElementById('q-topic-input').value.trim();
   var d=document.getElementById('q-date-input').value;
   if(!t){alert('Enter a topic.');return;}
-  var item={id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending'};
+  var item={id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending',language:getCurrentPipelineLanguage()};
   if(selectedChannelSlug){item.channel_slug=selectedChannelSlug;}
   queue.push(item);
   document.getElementById('q-topic-input').value='';
@@ -3394,7 +3397,7 @@ async function generateFullPlan(){
     var today=new Date();
     plan.forEach(function(item){
       var d=new Date(today);d.setDate(d.getDate()+(item.day_offset||0));
-      var qItem={id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending'};
+      var qItem={id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending',language:getCurrentPipelineLanguage()};
       if(selectedChannelSlug){qItem.channel_slug=selectedChannelSlug;}
       queue.push(qItem);
     });
@@ -3523,11 +3526,15 @@ function addSEOToQueue(){
   if(!t){alert('Generate SEO first — no title found.');return;}
   var meta={hasScript:true,hasSEO:true,seoTitle:t,
     seoDescription:document.getElementById('seo-desc').textContent||'',
+    language:getCurrentPipelineLanguage(),
     seoTags:document.getElementById('seo-tags-raw').value||''};
+  if(selectedChannelSlug)meta.channel_slug=selectedChannelSlug;
   var existing=queue.find(function(q){return q.title.toLowerCase()===t.toLowerCase();});
   if(existing){
     existing.hasSEO=true;existing.seoTitle=meta.seoTitle;
     existing.seoDescription=meta.seoDescription;existing.seoTags=meta.seoTags;
+    existing.language=existing.language||meta.language;
+    existing.channel_slug=existing.channel_slug||meta.channel_slug||'';
     saveQ();renderQueue();
   } else {
     addQueueItem(t,'Scripted',meta);
@@ -5004,7 +5011,8 @@ function runPipelineForTopic(itemOrTopic){
   if(item.scriptText)payload.scriptText=item.scriptText;
   if(item.guidance)payload.guidance=item.guidance;
   if(item.voice_id)payload.voice_id=item.voice_id;
-  if(item.channel_slug)payload.channel_slug=item.channel_slug;
+  payload.language=item.language||getCurrentPipelineLanguage();
+  if(item.channel_slug||selectedChannelSlug)payload.channel_slug=item.channel_slug||selectedChannelSlug;
   if(item.hasSEO){
     payload.seoTitle=item.seoTitle||'';
     payload.seoDescription=item.seoDescription||'';

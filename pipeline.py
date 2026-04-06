@@ -260,8 +260,9 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 
 
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
-        thumb_data_url: str | None = None, channel_slug: str | None = None,
-        guidance: str | None = None, shorts_count: int = 0) -> str:
+    thumb_data_url: str | None = None, channel_slug: str | None = None,
+    guidance: str | None = None, shorts_count: int = 0,
+    voice_id: str | None = None, language: str | None = None) -> str:
     """Execute the full pipeline for a given topic.
 
     Parallel-safe: each call creates an isolated runs/<job_id>/ directory.
@@ -286,19 +287,20 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
     _register_job(job_id, topic, os.getpid())
     logger.info("[job=%s] Pipeline starting: %s", job_id, topic)
-    vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    effective_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
 
     try:
         # Step 1 — Script (use dashboard script if provided, else generate fresh)
         if script_text:
             logger.info("Using pre-written script from dashboard Script Writer")
-            content = script_text_to_segments(script_text, topic, seo_override=seo)
+            content = script_text_to_segments(script_text, topic, seo_override=seo, language=effective_language)
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
-            content = generate_script(topic, guidance=guidance, max_tokens=8000)
+            content = generate_script(topic, guidance=guidance, max_tokens=8000, language=effective_language)
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -312,7 +314,13 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         segments = content["segments"]
 
         # Step 2 — Text-to-speech (into isolated audio dir)
-        audio_files = generate_audio_segments(segments, out_dir=audio_dir)
+        audio_files = generate_audio_segments(
+            segments,
+            out_dir=audio_dir,
+            edge_voice=voice_id,
+            channel_slug=channel_slug,
+            language=effective_language,
+        )
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         # Step 3 — Stock visuals (into isolated images dir)
@@ -427,7 +435,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
-               guidance: str | None = None, voice_id: str | None = None, shorts_count: int = 0) -> tuple:
+               channel_slug: str | None = None, guidance: str | None = None,
+               voice_id: str | None = None, shorts_count: int = 0,
+               language: str | None = None) -> tuple:
     """Run pipeline steps 1–5 (generate + build) WITHOUT uploading.
 
     Parallel-safe: uses an isolated runs/<job_id>/ working directory.
@@ -447,19 +457,20 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
     thumb_out  = os.path.join(job_dir, "thumbnail.jpg")
 
     _register_job(job_id, topic, os.getpid())
-    vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    effective_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
     try:
         # Step 1 — Script
         if script_text:
             _p("Converting your Script Writer script to pipeline format…")
-            content = script_text_to_segments(script_text, topic, seo_override=seo)
+            content = script_text_to_segments(script_text, topic, seo_override=seo, language=effective_language)
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
             _p("Generating AI script…")
-            content = generate_script(topic, guidance=guidance)
+            content = generate_script(topic, guidance=guidance, language=effective_language)
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -472,7 +483,13 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         segments = content["segments"]
 
         _p(f"Generating audio for {len(segments)} segments…")
-        audio_files = generate_audio_segments(segments, out_dir=audio_dir, edge_voice=voice_id, language=CHANNEL_LANGUAGE)
+        audio_files = generate_audio_segments(
+            segments,
+            out_dir=audio_dir,
+            edge_voice=voice_id,
+            channel_slug=channel_slug,
+            language=effective_language,
+        )
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         _p(f"Fetching visuals ({VISUAL_MODE}) for {len(segments)} segments…")

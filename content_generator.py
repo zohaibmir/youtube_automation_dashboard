@@ -105,7 +105,8 @@ def _extract_json(raw: str) -> dict:
     raise json.JSONDecodeError("Could not parse JSON from response", candidate, 0)
 
 
-def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6000) -> dict:
+def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6000,
+                    language: str | None = None) -> dict:
     """Generate a full video script for the given topic.
 
     Args:
@@ -125,7 +126,9 @@ def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6
 ---
 """
 
-    prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {CHANNEL_LANGUAGE}
+    script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+
+    prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
 Topic: "{topic}"
 {guidance_block}
 Return ONLY valid JSON:
@@ -147,7 +150,7 @@ Return ONLY valid JSON:
 }}
 
 Min 10 segments. Hook = shocking fact or question.
-Use {CHANNEL_LANGUAGE} naturally. Short sentences. Build suspense.
+Use {script_language} naturally. Short sentences. Build suspense.
 For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins sunset', 'crowded mosque prayer', 'jerusalem old city wall'. Avoid single generic words.
 For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
@@ -164,7 +167,8 @@ For visual_keyword_fallback: use a simpler 1-2 word broad term in case the speci
     return script
 
 
-def script_text_to_segments(script_text: str, topic: str, seo_override: dict | None = None) -> dict:
+def script_text_to_segments(script_text: str, topic: str, seo_override: dict | None = None,
+                            language: str | None = None) -> dict:
     """Convert a human-written dashboard script into the pipeline's segment format.
 
     Used when the user writes/edits script in the Script Writer tab before
@@ -180,8 +184,10 @@ def script_text_to_segments(script_text: str, topic: str, seo_override: dict | N
         Same dict shape as generate_script(): title, description, tags,
         thumbnail_text, thumbnail_subtext, segments.
     """
+    script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+
     prompt = f"""Convert this YouTube script into pipeline segments.
-Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {CHANNEL_LANGUAGE}
+Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
 Topic: "{topic}"
 
 Script:

@@ -55,11 +55,7 @@ def _build_provider(edge_voice: str | None = None,
         channel_slug: YouTube channel slug (for channel-level voice lookup)
         language: Language code for default voice selection
     """
-    try:
-        from config import CHANNEL_LANGUAGE
-        lang = CHANNEL_LANGUAGE or language or "english"
-    except Exception:
-        lang = language or "english"
+    lang = language or "english"
 
     # Use the resolve_voice function for 3-tier hierarchy
     from voice_config import resolve_voice
