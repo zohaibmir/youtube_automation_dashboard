@@ -1087,6 +1087,7 @@ canvas{display:block;width:100%;height:auto}
         <select id="stu-video-select" onchange="studioVideoChanged()" style="margin-bottom:0"><option value="">Loading…</option></select>
       </div>
       <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="loadStudioVideos()">&#128260; Refresh</button>
+      <button class="btn btn-danger btn-sm" id="stu-delete-btn" onclick="studioDeleteVideo()" title="Delete selected video from local filesystem" style="display:none">&#128465; Delete</button>
     </div>
     <div id="stu-video-info" style="display:none;padding:10px;background:var(--bg3);border-radius:8px;margin-top:6px">
       <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text)">
@@ -5401,8 +5402,10 @@ function _loadStudioChannels(){
 function studioVideoChanged(){
   var path=document.getElementById('stu-video-select').value;
   var info=document.getElementById('stu-video-info');
+  var delBtn=document.getElementById('stu-delete-btn');
   _studioInfo=null;
-  if(!path){info.style.display='none';return;}
+  if(!path){info.style.display='none';if(delBtn)delBtn.style.display='none';return;}
+  if(delBtn)delBtn.style.display='';
   info.style.display='block';
   document.getElementById('stu-v-dur').textContent='\u2026';
   fetch('/api/studio/info/'+encodeURIComponent(path)).then(function(r){return r.json();}).then(function(d){
@@ -5490,6 +5493,30 @@ function studioExtractClips(){
     document.getElementById('stu-extracted-list').innerHTML=html;
     document.getElementById('stu-extracted-section').style.display=_studioClipPaths.length?'block':'none';
   }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
+}
+
+function studioDeleteVideo(){
+  var vpath=document.getElementById('stu-video-select').value;
+  if(!vpath){return;}
+  var name=vpath.split('/').pop();
+  if(!confirm('Delete "'+name+'" from local disk?\n\nThis cannot be undone.')){return;}
+  var btn=document.getElementById('stu-delete-btn');
+  if(btn){btn.disabled=true;btn.textContent='Deleting\u2026';}
+  fetchJsonSafe('/api/studio/delete',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_path:vpath})})
+    .then(function(d){
+      if(d&&d.ok){
+        var st=document.getElementById('stu-upload-main-status');
+        if(st){st.textContent='\u2713 Deleted: '+name;st.style.color='var(--green)';}
+        loadStudioVideos();
+      } else {
+        alert('Delete failed: '+((d&&d.error)||'unknown error'));
+        if(btn){btn.disabled=false;btn.textContent='\uD83D\uDDD1\uFE0F Delete';}
+      }
+    })
+    .catch(function(e){
+      alert('Delete failed: '+(e.message||e));
+      if(btn){btn.disabled=false;btn.textContent='\uD83D\uDDD1\uFE0F Delete';}
+    });
 }
 
 function studioUploadMain(){

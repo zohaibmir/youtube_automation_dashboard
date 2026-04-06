@@ -452,6 +452,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_upload_main()
         elif path == "/api/studio/upload-clips":
             self._handle_studio_upload_clips()
+        elif path == "/api/studio/delete":
+            self._handle_studio_delete()
         elif path == "/api/community-post/generate":
             self._handle_community_post_generate()
         else:
@@ -464,6 +466,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/upload-music":
             self._handle_music_delete()
+        elif path == "/api/studio/delete":
+            self._handle_studio_delete()
         elif path.startswith("/api/channels/"):
             self._handle_channel_remove(path)
         elif path.startswith("/api/social/platforms/"):
@@ -1350,6 +1354,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             from community_post import generate_post
             self._json_response(generate_post(title, desc, tags, api_key or None))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_studio_delete(self) -> None:
+        """DELETE or POST /api/studio/delete — Delete a local video file from output/."""
+        if not self._is_request_allowed(require_localhost=False): return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_path = (data.get("video_path") or "").strip()
+            if not video_path:
+                self._json_response({"ok": False, "error": "video_path required"}); return
+            from media_hub import delete_video
+            self._json_response(delete_video(video_path))
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
 

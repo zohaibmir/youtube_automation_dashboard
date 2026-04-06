@@ -15,24 +15,43 @@ _SHORTS_DIR = _OUTPUT_DIR / "shorts"
 _CLIPS_DIR = _OUTPUT_DIR / "clips"
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi"}
 
+# All subdirectories under output/ that may contain user-visible videos
+_SCAN_DIRS = [
+    _OUTPUT_DIR,
+    _SHORTS_DIR,
+    _OUTPUT_DIR / "shorts_animated",
+    _OUTPUT_DIR / "smoke_shorts",
+    _CLIPS_DIR,
+]
+
 
 # ── Discovery ──────────────────────────────────────────────────────────────
 
 def list_videos() -> dict:
-    """Return all video files under output/ with basic info."""
+    """Return all video files under output/ (and known subdirs) with basic info."""
     try:
         videos = []
-        for d in (_OUTPUT_DIR, _SHORTS_DIR):
+        seen: set[str] = set()
+        for d in _SCAN_DIRS:
             if not d.exists():
                 continue
             for f in sorted(d.iterdir()):
                 if f.suffix.lower() in _VIDEO_EXTS and f.is_file():
+                    key = str(f.resolve())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rel = str(f.relative_to(_OUTPUT_DIR))
+                    label = f"{rel}" if f.parent != _OUTPUT_DIR else f.name
                     videos.append({
-                        "name": f.name,
+                        "name": label,
                         "path": str(f),
                         "size_mb": round(f.stat().st_size / 1048576, 1),
                         "dir": str(d),
+                        "mtime": int(f.stat().st_mtime),
                     })
+        # Sort newest first
+        videos.sort(key=lambda v: v["mtime"], reverse=True)
         return {"ok": True, "videos": videos}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -137,6 +156,27 @@ def extract_clips(video_path: str, clips: list[dict]) -> dict:
                 "size_mb": round(out_path.stat().st_size / 1048576, 1),
             })
     return {"ok": True, "clips": results}
+
+
+def delete_video(video_path: str) -> dict:
+    """Delete a video file from the local filesystem.
+
+    Only files inside output/ are allowed (path-traversal prevention).
+    """
+    p = Path(video_path)
+    if not p.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        p.resolve().relative_to(_OUTPUT_DIR.resolve())
+    except ValueError:
+        return {"ok": False, "error": "Access denied — only files in output/ can be deleted"}
+    if not p.is_file():
+        return {"ok": False, "error": "Not a file"}
+    try:
+        p.unlink()
+        return {"ok": True, "deleted": str(p)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ── Upload orchestration ────────────────────────────────────────────────────

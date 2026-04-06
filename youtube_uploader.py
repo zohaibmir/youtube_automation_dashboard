@@ -336,22 +336,25 @@ def upload_video(
     video_id: str = response["id"]
 
     # Thumbnail upload — requires verified channel (1000+ subs)
-    # Skip gracefully if permission denied
-    try:
-        logger.info("Uploading thumbnail: %s", thumbnail_path)
-        youtube.thumbnails().set(
-            videoId=video_id,
-            media_body=MediaFileUpload(thumbnail_path),
-        ).execute()
-        logger.info("Thumbnail uploaded successfully")
-    except HttpError as e:
-        if e.resp.status == 403:
-            logger.warning(
-                "Thumbnail upload skipped — account not yet verified for custom thumbnails "
-                "(need 1000+ subscribers or channel verification). Video still uploaded OK."
-            )
-        else:
-            raise
+    # Skip gracefully if permission denied or no thumbnail provided
+    if thumbnail_path:
+        try:
+            logger.info("Uploading thumbnail: %s", thumbnail_path)
+            youtube.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(thumbnail_path),
+            ).execute()
+            logger.info("Thumbnail uploaded successfully")
+        except HttpError as e:
+            if e.resp.status == 403:
+                logger.warning(
+                    "Thumbnail upload skipped — account not yet verified for custom thumbnails "
+                    "(need 1000+ subscribers or channel verification). Video still uploaded OK."
+                )
+            else:
+                raise
+    else:
+        logger.info("No thumbnail provided — skipping thumbnail upload")
 
     logger.info("Published: https://youtube.com/watch?v=%s", video_id)
     return video_id
