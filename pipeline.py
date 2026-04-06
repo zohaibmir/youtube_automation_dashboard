@@ -262,7 +262,8 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
     thumb_data_url: str | None = None, channel_slug: str | None = None,
     guidance: str | None = None, shorts_count: int = 0,
-    voice_id: str | None = None, language: str | None = None) -> str:
+    voice_id: str | None = None, language: str | None = None,
+    duration_hint: str | None = None) -> str:
     """Execute the full pipeline for a given topic.
 
     Parallel-safe: each call creates an isolated runs/<job_id>/ directory.
@@ -294,13 +295,25 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         # Step 1 — Script (use dashboard script if provided, else generate fresh)
         if script_text:
             logger.info("Using pre-written script from dashboard Script Writer")
-            content = script_text_to_segments(script_text, topic, seo_override=seo, language=effective_language)
+            content = script_text_to_segments(
+                script_text,
+                topic,
+                seo_override=seo,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
-            content = generate_script(topic, guidance=guidance, max_tokens=8000, language=effective_language)
+            content = generate_script(
+                topic,
+                guidance=guidance,
+                max_tokens=8000,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -437,7 +450,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
                channel_slug: str | None = None, guidance: str | None = None,
                voice_id: str | None = None, shorts_count: int = 0,
-               language: str | None = None) -> tuple:
+               language: str | None = None, duration_hint: str | None = None) -> tuple:
     """Run pipeline steps 1–5 (generate + build) WITHOUT uploading.
 
     Parallel-safe: uses an isolated runs/<job_id>/ working directory.
@@ -463,14 +476,25 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         # Step 1 — Script
         if script_text:
             _p("Converting your Script Writer script to pipeline format…")
-            content = script_text_to_segments(script_text, topic, seo_override=seo, language=effective_language)
+            content = script_text_to_segments(
+                script_text,
+                topic,
+                seo_override=seo,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
             _p("Generating AI script…")
-            content = generate_script(topic, guidance=guidance, language=effective_language)
+            content = generate_script(
+                topic,
+                guidance=guidance,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),

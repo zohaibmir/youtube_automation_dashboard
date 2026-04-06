@@ -31,6 +31,26 @@ _MODEL_PRICING = {
 _DEFAULT_PRICING = {"input": 3.00, "output": 15.00}
 
 
+def _duration_constraints(duration_hint: str | None) -> tuple[str, str]:
+    hint = (duration_hint or "").strip().lower()
+    if not hint:
+        return "", ""
+    if "3-4" in hint or "short" in hint:
+        return (
+            f"Target runtime: {duration_hint}.",
+            "Aim for roughly 6-8 segments and keep narration tight enough for about 3 to 4 minutes total.",
+        )
+    if "10-12" in hint or "long" in hint or "deep dive" in hint:
+        return (
+            f"Target runtime: {duration_hint}.",
+            "Aim for roughly 12-16 segments and enough substance for about 10 to 12 minutes total.",
+        )
+    return (
+        f"Target runtime: {duration_hint}.",
+        "Aim for roughly 9-12 segments and enough substance for about 6 to 8 minutes total.",
+    )
+
+
 def _calc_cost(model: str, usage) -> float:
     """Calculate USD cost from an Anthropic message Usage object."""
     pricing = _MODEL_PRICING.get(model, _DEFAULT_PRICING)
@@ -106,7 +126,7 @@ def _extract_json(raw: str) -> dict:
 
 
 def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6000,
-                    language: str | None = None) -> dict:
+                    language: str | None = None, duration_hint: str | None = None) -> dict:
     """Generate a full video script for the given topic.
 
     Args:
@@ -127,9 +147,11 @@ def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6
 """
 
     script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    duration_line, duration_rule = _duration_constraints(duration_hint)
 
     prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
 Topic: "{topic}"
+{duration_line}
 {guidance_block}
 Return ONLY valid JSON:
 {{
@@ -151,6 +173,7 @@ Return ONLY valid JSON:
 
 Min 10 segments. Hook = shocking fact or question.
 Use {script_language} naturally. Short sentences. Build suspense.
+{duration_rule}
 For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins sunset', 'crowded mosque prayer', 'jerusalem old city wall'. Avoid single generic words.
 For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
@@ -168,7 +191,7 @@ For visual_keyword_fallback: use a simpler 1-2 word broad term in case the speci
 
 
 def script_text_to_segments(script_text: str, topic: str, seo_override: dict | None = None,
-                            language: str | None = None) -> dict:
+                            language: str | None = None, duration_hint: str | None = None) -> dict:
     """Convert a human-written dashboard script into the pipeline's segment format.
 
     Used when the user writes/edits script in the Script Writer tab before
@@ -185,10 +208,12 @@ def script_text_to_segments(script_text: str, topic: str, seo_override: dict | N
         thumbnail_text, thumbnail_subtext, segments.
     """
     script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    duration_line, duration_rule = _duration_constraints(duration_hint)
 
     prompt = f"""Convert this YouTube script into pipeline segments.
 Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
 Topic: "{topic}"
+{duration_line}
 
 Script:
 {script_text[:3500]}
@@ -211,6 +236,7 @@ Return ONLY valid JSON — do not regenerate the script, keep the exact narratio
   ]
 }}
 Split into 8-12 segments of roughly equal length.
+{duration_rule}
 For visual_keyword: be specific — e.g. 'mosque interior golden dome', 'soldier battlefield smoke', 'bible open light rays'. Avoid single generic words.
 For visual_keyword_fallback: 1-2 word broad fallback if specific term has no results."""
 
