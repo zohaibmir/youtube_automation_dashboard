@@ -306,6 +306,34 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return False
 
+    def _is_localhost(self) -> bool:
+        """Check if request is from localhost. Allows 127.0.0.1, ::1, ::ffff:127.0.0.1"""
+        return self.client_address[0] in _LOCALHOST
+
+    def _is_request_allowed(self, require_localhost: bool = False) -> bool:
+        """Check if request is allowed.
+        Args:
+            require_localhost: If True, require localhost when auth is not enabled.
+                             If False, allow any address when auth is not enabled.
+        Returns True if request should be allowed.
+        """
+        # Always allow localhost
+        if self._is_localhost():
+            return True
+        # If auth is enabled, request already passed _check_auth, so allow it
+        if _AUTH_ENABLED:
+            return True
+        # If auth is not enabled and require_localhost is False, allow (production mode)
+        if not require_localhost:
+            return True
+        # If auth is not enabled and require_localhost is True, deny remote requests
+        return False
+
+    def _deny_request(self, reason: str = "Not allowed", status_code: int = 403) -> bool:
+        """Send error response and return True to signal early exit."""
+        self._json_response({"ok": False, "error": reason}, status_code=status_code)
+        return True
+
     def do_GET(self) -> None:
         if not self._check_auth():
             return
@@ -619,8 +647,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_music_upload(self) -> None:
         """Accept a multipart/form-data .mp3 upload and save to music/bg_music.mp3."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             self._json_response({"ok": False, "error": "Expected multipart/form-data"})
@@ -662,8 +689,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_music_delete(self) -> None:
         """Remove background music file and clear the .env key."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         dest = Path(__file__).parent / "music" / "bg_music.mp3"
         if dest.exists():
             dest.unlink()
@@ -673,10 +699,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ── Channel management ─────────────────────────────────────────────────
 
     def _handle_channels_get(self) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
-        from youtube_uploader import list_channels
-        self._json_response({"ok": True, "channels": list_channels()})
+        if not self._is_request_allowed(require_localhost=False): return
+        try:
+            from youtube_uploader import list_channels
+            self._json_response({"ok": True, "channels": list_channels()})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)}, status_code=500)
 
     def _handle_youtube_oauth_diagnostics(self) -> None:
         """GET /api/youtube/oauth-diagnostics — safe checks for hosted OAuth setup."""
@@ -744,8 +772,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_add(self) -> None:
         """POST /api/channels/add — Run OAuth flow to add a YouTube channel."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -760,8 +787,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_set_default(self) -> None:
         """POST /api/channels/default — Set a channel as default."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -776,8 +802,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_remove(self, path: str) -> None:
         """DELETE /api/channels/<slug> — Remove a channel."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         slug = path.replace("/api/channels/", "").strip("/")
         if not slug:
             self._json_response({"ok": False, "error": "slug required"}); return
@@ -789,8 +814,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_social_platforms_get(self) -> None:
         """GET /api/social/platforms — List configured social platforms."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from social_uploader import list_platforms
         self._json_response(list_platforms())
 
@@ -798,15 +822,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_assets_get(self) -> None:
         """GET /api/branding/assets — List existing branding files."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from branding_manager import list_assets
         self._json_response({"ok": True, "assets": list_assets()})
 
     def _handle_branding_generate(self) -> None:
         """POST /api/branding/generate — Generate banner, avatar, watermark."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -821,8 +843,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_upload_banner(self) -> None:
         """POST /api/branding/upload-banner — Upload banner to YouTube."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -835,8 +856,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_set_trailer(self) -> None:
         """POST /api/branding/set-trailer — Set channel trailer video."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -852,8 +872,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_audit(self) -> None:
         """GET /api/channel/audit — Full channel SEO audit."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             from channel_manager import audit_channel
             result = audit_channel()
@@ -863,8 +882,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_update(self) -> None:
         """POST /api/channel/update — Update channel description/keywords/etc."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -883,8 +901,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_fix_video(self) -> None:
         """POST /api/channel/fix-video — Fix a single video's SEO."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -900,8 +917,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_fix_all(self) -> None:
         """POST /api/channel/fix-all — Fix all videos with issues."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             from channel_manager import fix_all_videos
             result = fix_all_videos()
@@ -913,15 +929,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_videos_get(self) -> None:
         """GET /api/studio/videos — List video files in output/."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from media_hub import list_videos
         self._json_response(list_videos())
 
     def _handle_studio_video_info(self, path: str) -> None:
         """GET /api/studio/info/<encoded_path> — Probe video metadata."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         import urllib.parse
         video_path = urllib.parse.unquote(path.replace("/api/studio/info/", "", 1))
         from media_hub import video_info
@@ -929,8 +943,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_extract_clips(self) -> None:
         """POST /api/studio/extract-clips — Extract time-range clips from a video."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -946,8 +959,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_upload_main(self) -> None:
         """POST /api/studio/upload-main — Upload existing video to YouTube."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -968,8 +980,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_upload_clips(self) -> None:
         """POST /api/studio/upload-clips — Upload clips to YouTube Shorts + social."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -995,8 +1006,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_community_post_generate(self) -> None:
         """POST /api/community-post/generate — AI-generate a community post draft."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -1015,8 +1025,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def _handle_social_config_post(self) -> None:
         """POST /api/social/config — Save platform credentials.
         Body: {platform, access_token, user_id/page_id, enabled, ...}"""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
@@ -1032,8 +1041,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_social_platform_remove(self, path: str) -> None:
         """DELETE /api/social/platforms/<name> — Remove a social platform config."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         platform = path.replace("/api/social/platforms/", "").strip("/")
         from social_uploader import remove_platform
         ok = remove_platform(platform)
@@ -1043,8 +1051,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """POST /api/social/upload — Upload Shorts to selected social platforms.
         Body: {platforms: ["instagram", "facebook", "tiktok"]}
         Uses the Shorts from the current pipeline job."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
@@ -1147,9 +1154,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return None
 
-    def _json_response(self, data) -> None:
+    def _json_response(self, data, status_code: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
