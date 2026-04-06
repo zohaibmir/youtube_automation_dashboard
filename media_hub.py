@@ -10,7 +10,9 @@ import os
 import subprocess
 from pathlib import Path
 
-_OUTPUT_DIR = Path("output")
+from config import OUTPUT_DIR
+
+_OUTPUT_DIR = Path(OUTPUT_DIR)
 _SHORTS_DIR = _OUTPUT_DIR / "shorts"
 _CLIPS_DIR = _OUTPUT_DIR / "clips"
 _VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi"}
@@ -224,9 +226,19 @@ def upload_clips_to_platforms(clip_paths: list[str], content: dict,
     """
     results = {"youtube_shorts": [], "social": []}
     for clip_path in clip_paths:
+        if not isinstance(clip_path, str) or not clip_path.strip():
+            err = "Invalid clip path"
+            if youtube_shorts:
+                results["youtube_shorts"].append({"path": clip_path, "error": err})
+            if social_platforms:
+                results["social"].append({"path": clip_path, "error": err})
+            continue
         cp = Path(clip_path)
         if not cp.exists():
-            results["youtube_shorts"].append({"path": clip_path, "error": "File not found"})
+            if youtube_shorts:
+                results["youtube_shorts"].append({"path": clip_path, "error": "File not found"})
+            if social_platforms:
+                results["social"].append({"path": clip_path, "error": "File not found"})
             continue
 
         # YouTube Shorts upload
