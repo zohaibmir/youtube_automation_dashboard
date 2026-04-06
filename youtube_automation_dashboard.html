@@ -3335,7 +3335,9 @@ function saveThumbToQueue(){
 
 function uploadQueueItem(id){
   var item=queue.find(function(q){return q.id===id;});if(!item)return;
-  if(!window.ytToken){
+  // Check if default channel has a token
+  var hasYouTubeToken = window.ytToken || (_ytChannels && _ytChannels.some(function(c){return c.is_default && c.has_token;}));
+  if(!hasYouTubeToken){
     var cmd='python main.py "'+item.title.replace(/"/g,'\\"')+'"';
     if(confirm('YouTube not connected yet.\n\nRun this from your terminal to produce & upload via Python pipeline:\n\n'+cmd+'\n\nCopy command to clipboard?')){
       navigator.clipboard.writeText(cmd).catch(function(){});
