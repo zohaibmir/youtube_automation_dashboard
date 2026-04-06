@@ -18,6 +18,7 @@ Docker:
     command: python server.py
 """
 
+import base64
 import json
 import os
 import sys
@@ -160,6 +161,46 @@ _EXPOSED_KEYS = {
 _ENV_PATH = str(Path(__file__).parent / ".env")
 _LOCALHOST = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
+# Public static allowlist for hosted mode. This avoids exposing repository
+# internals (source, tokens, env files) through the raw file server.
+_PUBLIC_STATIC_FILES = {
+    "/youtube_automation_dashboard.html",
+    "/thumbnail_designer.html",
+    "/southasian_youtube_dashboard.html",
+    "/thumbnail.jpg",
+    "/favicon.ico",
+}
+_PUBLIC_STATIC_PREFIXES = (
+    "/output/",
+    "/audio/",
+    "/images/",
+    "/branding/",
+    "/music/",
+)
+_BLOCKED_STATIC_PREFIXES = (
+    "/.git",
+    "/.github",
+    "/.vscode",
+    "/tokens/",
+    "/runs/",
+    "/.jobs/",
+    "/.env",
+)
+_BLOCKED_STATIC_EXTENSIONS = (
+    ".py",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".json",
+    ".md",
+    ".yml",
+    ".yaml",
+    ".sh",
+    ".pem",
+    ".key",
+    ".log",
+)
+
 _DB_ROUTES = {
     "/api/db/stats":  _db_stats,
     "/api/db/costs":  _db_costs,
@@ -168,6 +209,13 @@ _DB_ROUTES = {
     "/api/db/queue":  _db_queue,
     "/api/settings":  _db_settings,
 }
+
+# ── HTTP Basic Authentication ──────────────────────────────────────────────────
+# Set DASHBOARD_USERNAME and DASHBOARD_PASSWORD env vars to enable auth.
+# If not set, the dashboard is public (no auth required).
+_DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME", "").strip()
+_DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "").strip()
+_AUTH_ENABLED = bool(_DASHBOARD_USERNAME and _DASHBOARD_PASSWORD)
 
 # ── Pipeline preview state ─────────────────────────────────────────────────────
 _pipeline_job: dict = {
@@ -235,8 +283,38 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
 
 class DashboardHandler(SimpleHTTPRequestHandler):
 
+    def _check_auth(self) -> bool:
+        """Check HTTP Basic Auth credentials. Returns True if auth is valid or not required."""
+        if not _AUTH_ENABLED:
+            return True
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Basic "):
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="YouTube Automation Dashboard"')
+            self.end_headers()
+            return False
+        try:
+            encoded = auth_header[6:]
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            username, password = decoded.split(":", 1)
+            if username == _DASHBOARD_USERNAME and password == _DASHBOARD_PASSWORD:
+                return True
+        except Exception:
+            pass
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="YouTube Automation Dashboard"')
+        self.end_headers()
+        return False
+
     def do_GET(self) -> None:
+        if not self._check_auth():
+            return
         path = self.path.split("?")[0]
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/youtube_automation_dashboard.html")
+            self.end_headers()
+            return
         if path == "/api/env":
             self._json_response(self._handle_env())
         elif path == "/api/pipeline/status":
@@ -251,6 +329,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"jobs": list_jobs()})
         elif path == "/api/channels":
             self._handle_channels_get()
+        elif path == "/api/youtube/oauth-diagnostics":
+            self._handle_youtube_oauth_diagnostics()
         elif path == "/api/social/platforms":
             self._handle_social_platforms_get()
         elif path == "/api/branding/assets":
@@ -264,9 +344,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
+            if not self._is_allowed_static_path(path):
+                self.send_response(404)
+                self.end_headers()
+                return
             super().do_GET()
 
     def do_POST(self) -> None:
+        if not self._check_auth():
+            return
         path = self.path.split("?")[0]
 
         if path == "/api/pipeline/run":
@@ -323,6 +409,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.end_headers()
 
     def do_DELETE(self) -> None:
+        if not self._check_auth():
+            return
         path = self.path.split("?")[0]
         if path == "/api/upload-music":
             self._handle_music_delete()
@@ -335,8 +423,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.end_headers()
 
     def _handle_pipeline_run(self) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
@@ -380,8 +466,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": False, "error": str(ex)})
 
     def _handle_pipeline_upload(self) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
         if not _DB_AVAILABLE:
             self._json_response({"ok": False, "error": "DB not available"}); return
         # Read optional channel selection from request body
@@ -461,8 +545,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_pipeline_kill(self) -> None:
         """POST /api/pipeline/kill — Kill a running pipeline process and clear lock."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
         from pipeline import kill_pipeline
         result = kill_pipeline()
         # Also reset the in-memory pipeline state
@@ -477,8 +559,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_settings_sync_env(self) -> None:
         """POST /api/settings/sync-env — Write dashboard production settings to .env."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -519,8 +599,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": False, "error": str(e)})
 
     def _handle_settings_post(self) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
         if not _DB_AVAILABLE:
             self._json_response({"ok": False, "error": "DB not available"}); return
         try:
@@ -599,6 +677,70 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_response(403); self.end_headers(); return
         from youtube_uploader import list_channels
         self._json_response({"ok": True, "channels": list_channels()})
+
+    def _handle_youtube_oauth_diagnostics(self) -> None:
+        """GET /api/youtube/oauth-diagnostics — safe checks for hosted OAuth setup."""
+        origin = self.headers.get("Origin", "")
+        host = self.headers.get("Host", "")
+        scheme = "https" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else "http"
+        if host and not origin:
+            origin = f"{scheme}://{host}"
+
+        env_client_id = os.getenv("YOUTUBE_WEB_CLIENT_ID", "")
+        env_client_id_set = bool(env_client_id)
+        env_client_id_masked = ""
+        if env_client_id_set:
+            env_client_id_masked = f"{env_client_id[:12]}...{env_client_id[-18:]}"
+
+        client_secrets_path = os.getenv("YOUTUBE_CLIENT_SECRETS", "client_secrets.json")
+        client_secrets_exists = os.path.exists(client_secrets_path)
+
+        diagnostics = {
+            "ok": True,
+            "origin": origin,
+            "host": host,
+            "web_client_id": {
+                "present": env_client_id_set,
+                "masked": env_client_id_masked,
+            },
+            "desktop_client_secrets": {
+                "path": client_secrets_path,
+                "exists": client_secrets_exists,
+            },
+            "required_google_console": {
+                "authorized_javascript_origins": [origin] if origin else [],
+                "oauth_client_type": "Web application",
+                "scope": "https://www.googleapis.com/auth/youtube.force-ssl",
+            },
+            "channels": [],
+        }
+
+        try:
+            from youtube_uploader import list_channels
+
+            channels = list_channels()
+            for ch in channels:
+                diagnostics["channels"].append({
+                    "slug": ch.get("slug"),
+                    "name": ch.get("name"),
+                    "is_default": bool(ch.get("is_default")),
+                    "has_token": bool(ch.get("has_token")),
+                })
+        except Exception as exc:
+            diagnostics["channels_error"] = str(exc)
+
+        tips = []
+        if not env_client_id_set:
+            tips.append("Set YOUTUBE_WEB_CLIENT_ID in hosted environment variables.")
+        if origin:
+            tips.append(f"Add {origin} to Authorized JavaScript origins in Google Cloud OAuth Web client.")
+        if not client_secrets_exists:
+            tips.append("Upload client_secrets.json to hosted volume and set YOUTUBE_CLIENT_SECRETS path.")
+        if not any(c.get("has_token") for c in diagnostics["channels"]):
+            tips.append("No server upload token found; add channel once via backend OAuth flow.")
+
+        diagnostics["tips"] = tips
+        self._json_response(diagnostics)
 
     def _handle_channel_add(self) -> None:
         """POST /api/channels/add — Run OAuth flow to add a YouTube channel."""
@@ -947,14 +1089,65 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self._json_response({"ok": True, "results": all_results})
 
     def _handle_env(self) -> dict:
-        env = _read_env(_ENV_PATH)
-        return {k: v for k, v in env.items() if k in _EXPOSED_KEYS}
+        # Runtime environment first (Railway/hosted), then .env fallback.
+        merged: dict = {}
+        file_env = _read_env(_ENV_PATH)
+        for key in _EXPOSED_KEYS:
+            val = os.getenv(key)
+            if val is None or val == "":
+                val = file_env.get(key)
+            if val not in (None, ""):
+                merged[key] = val
+
+        # DB-backed settings can fill gaps when env variables are not present.
+        # This keeps dashboard fields consistent after "Save all settings".
+        db_settings = _db_settings() if _DB_AVAILABLE else {}
+        cfg = db_settings.get("config", {}) if isinstance(db_settings, dict) else {}
+        if isinstance(cfg, dict):
+            map_from_cfg = {
+                "anthropic": "ANTHROPIC_API_KEY",
+                "elevenlabs": "ELEVENLABS_API_KEY",
+                "pexels": "PEXELS_API_KEY",
+                "voiceId": "ELEVENLABS_VOICE_ID",
+                "voiceStab": "VOICE_STABILITY",
+                "voiceSim": "VOICE_SIMILARITY",
+                "voiceStyle": "VOICE_STYLE",
+                "ytVis": "DEFAULT_VISIBILITY",
+                "ytCategory": "YOUTUBE_CATEGORY_ID",
+                "ytClientId": "YOUTUBE_WEB_CLIENT_ID",
+                "ytSecretsPath": "YOUTUBE_CLIENT_SECRETS",
+                "freq": "VIDEOS_PER_WEEK",
+                "ttsProvider": "TTS_PROVIDER",
+                "edgeVoice": "EDGE_TTS_VOICE",
+            }
+            for cfg_key, env_key in map_from_cfg.items():
+                if env_key not in merged:
+                    value = cfg.get(cfg_key)
+                    if value not in (None, ""):
+                        merged[env_key] = str(value)
+
+        return merged
+
+    def _is_allowed_static_path(self, path: str) -> bool:
+        if not path or not path.startswith("/"):
+            return False
+        if path.endswith("/"):
+            return False
+        if any(path.startswith(prefix) for prefix in _BLOCKED_STATIC_PREFIXES):
+            return False
+        lowered = path.lower()
+        if any(lowered.endswith(ext) for ext in _BLOCKED_STATIC_EXTENSIONS):
+            return False
+        if path in _PUBLIC_STATIC_FILES:
+            return True
+        return any(path.startswith(prefix) for prefix in _PUBLIC_STATIC_PREFIXES)
+
+    def list_directory(self, path):
+        self.send_response(403)
+        self.end_headers()
+        return None
 
     def _json_response(self, data) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403)
-            self.end_headers()
-            return
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
