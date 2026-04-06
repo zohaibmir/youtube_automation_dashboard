@@ -207,6 +207,7 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('branding',this)"><span class="nav-icon">&#127912;</span>Branding</button>
   <button class="nav-item" onclick="navTo('health',this)"><span class="nav-icon">&#128138;</span>Channel Health</button>
   <button class="nav-item" onclick="navTo('yt-automation',this)"><span class="nav-icon">&#128640;</span>YT Automation</button>
+  <button class="nav-item" onclick="navTo('voices',this)"><span class="nav-icon">&#128264;&#65039;</span>Voice Test</button>
   <div class="nav-divider"></div>
   <div class="nav-section">Setup</div>
   <button class="nav-item" onclick="navTo('pipeline',this)"><span class="nav-icon">&#9881;&#65039;</span>Pipeline Code</button>
@@ -274,6 +275,13 @@ canvas{display:block;width:100%;height:auto}
 <div id="panel-trending" class="panel active">
   <div class="card">
     <div class="card-title" style="margin-bottom:11px">Channel settings</div>
+    <div style="background:rgba(61,219,160,0.08);border:1px solid rgba(61,219,160,0.2);border-radius:8px;padding:10px;margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px">📺 Working channel</label>
+      <select id="trending-channel-select" onchange="setSelectedChannel(this.value)" style="width:100%;margin-bottom:6px">
+        <option value="">🌐 Default channel</option>
+      </select>
+      <div id="selected-channel-info" style="font-size:10px;color:var(--green);font-weight:600">🌐 Default channel</div>
+    </div>
     <div class="grid2">
       <div>
         <label>Niche</label>
@@ -1203,6 +1211,10 @@ canvas{display:block;width:100%;height:auto}
   <!-- Upload Actions -->
   <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Upload to YouTube</div>
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="margin-bottom:10px;max-width:360px">
+      <label>Target Channel</label>
+      <select id="brand-channel-select" style="margin-bottom:0"><option value="">Default channel</option></select>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
       <button class="btn btn-green btn-sm" onclick="uploadBannerToYT()" id="brand-upload-banner-btn">&#128228; Upload Banner to YouTube</button>
       <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="setChannelTrailer()" id="brand-trailer-btn">&#127910; Set Channel Trailer</button>
@@ -1254,6 +1266,13 @@ canvas{display:block;width:100%;height:auto}
     <div style="flex:1;min-width:120px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center">
       <div style="font-size:24px;font-weight:800;color:var(--red)" id="health-issues">—</div>
       <div style="font-size:11px;color:var(--muted)">Issues Found</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
+    <div style="min-width:260px;max-width:420px;flex:1">
+      <label>Channel</label>
+      <select id="health-channel-slug-sel" onchange="_healthChannelChanged()" style="margin-bottom:0"><option value="">Default channel</option></select>
     </div>
   </div>
 
@@ -1959,29 +1978,56 @@ services:
         </select>
       </div>
       <div id="edge-voice-section">
-        <label>Edge Voice</label>
+        <label>Edge Voice (47 available)</label>
         <select id="cfg-edge-voice" onchange="markDirty()" style="margin-bottom:0">
-          <optgroup label="Hindi">
-            <option value="hi-IN-MadhurNeural">Madhur &#128104; Hindi male (warm)</option>
-            <option value="hi-IN-SwaraNeural">Swara &#128105; Hindi female</option>
+          <optgroup label="★ RECOMMENDED">
+            <option value="en-US-ChristopherNeural" selected>Christopher (US) - Authoritative, journalism/politics</option>
+            <option value="en-US-BrianNeural">Brian (US) - Professional, documentary</option>
+            <option value="en-US-GuyNeural">Guy (US) - Deep, serious voice</option>
+            <option value="en-GB-RyanNeural">Ryan (UK) - British professional</option>
+            <option value="en-IN-PrabhatNeural">Prabhat (India) - Indian English male</option>
+            <option value="en-US-AriaNeural">Aria (US) - Female professional</option>
           </optgroup>
-          <optgroup label="Urdu">
-            <option value="ur-PK-AsadNeural">Asad &#128104; Urdu male (clear)</option>
-            <option value="ur-PK-UzmaNeural">Uzma &#128105; Urdu female</option>
+          <optgroup label="English (United States)">
+            <option value="en-US-AnaNeural">Ana</option>
+            <option value="en-US-AndrewNeural">Andrew</option>
+            <option value="en-US-AvaNeural">Ava</option>
+            <option value="en-US-EmmaNeural">Emma</option>
+            <option value="en-US-EricNeural">Eric</option>
+            <option value="en-US-JennyNeural">Jenny</option>
+            <option value="en-US-MichelleNeural">Michelle</option>
+            <option value="en-US-RogerNeural">Roger</option>
+            <option value="en-US-SteffanNeural">Steffan</option>
           </optgroup>
-          <optgroup label="English (Indian)">
-            <option value="en-IN-PrabhatNeural">Prabhat &#128104; Indian English male</option>
-            <option value="en-IN-NeerjaNeural">Neerja &#128105; Indian English female</option>
+          <optgroup label="English (United Kingdom)">
+            <option value="en-GB-LibbyNeural">Libby</option>
+            <option value="en-GB-MaisieNeural">Maisie</option>
+            <option value="en-GB-SoniaNeural">Sonia</option>
+            <option value="en-GB-ThomasNeural">Thomas</option>
           </optgroup>
-          <optgroup label="English (US/UK)">
-            <option value="en-US-ChristopherNeural">Christopher &#128104; US English male (documentary)</option>
-            <option value="en-US-GuyNeural">Guy &#128104; US English male</option>
-            <option value="en-US-JennyNeural">Jenny &#128105; US English female</option>
-            <option value="en-GB-RyanNeural">Ryan &#128104; British male</option>
+          <optgroup label="English (India)">
+            <option value="en-IN-NeerjaNeural">Neerja (Female)</option>
           </optgroup>
-          <optgroup label="Arabic">
-            <option value="ar-SA-HamedNeural">Hamed &#128104; Arabic male</option>
-            <option value="ar-SA-ZariyahNeural">Zariyah &#128105; Arabic female</option>
+          <optgroup label="English (Other Regions)">
+            <option value="en-AU-NatashaNeural">Natasha (Australia)</option>
+            <option value="en-CA-ClaraNeural">Clara (Canada)</option>
+            <option value="en-CA-LiamNeural">Liam (Canada)</option>
+            <option value="en-IE-ConnorNeural">Connor (Ireland)</option>
+            <option value="en-IE-EmilyNeural">Emily (Ireland)</option>
+            <option value="en-NZ-MitchellNeural">Mitchell (New Zealand)</option>
+            <option value="en-NZ-MollyNeural">Molly (New Zealand)</option>
+            <option value="en-SG-LunaNeural">Luna (Singapore)</option>
+            <option value="en-SG-WayneNeural">Wayne (Singapore)</option>
+            <option value="en-ZA-LeahNeural">Leah (South Africa)</option>
+            <option value="en-ZA-LukeNeural">Luke (South Africa)</option>
+          </optgroup>
+          <optgroup label="Other Languages (Non-English)">
+            <option value="hi-IN-MadhurNeural">Madhur (Hindi male)</option>
+            <option value="hi-IN-SwaraNeural">Swara (Hindi female)</option>
+            <option value="ur-PK-AsadNeural">Asad (Urdu male)</option>
+            <option value="ur-PK-UzmaNeural">Uzma (Urdu female)</option>
+            <option value="ar-SA-HamedNeural">Hamed (Arabic male)</option>
+            <option value="ar-SA-ZariyahNeural">Zariyah (Arabic female)</option>
           </optgroup>
         </select>
       </div>
@@ -2548,6 +2594,81 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 </div>
 </div>
 
+<!-- ===== VOICE TEST ===== -->
+<div id="panel-voices" class="panel">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="font-size:22px">&#128264;&#65039;</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--text)">Voice Test</div>
+      <div style="font-size:11px;color:var(--muted)">Preview all available voices in 4 languages. Test voice quality before setting channel or video defaults.</div>
+    </div>
+  </div>
+
+  <div id="voices-loading" style="text-align:center;padding:30px;color:var(--muted)">Loading voice samples...</div>
+  
+  <div id="voices-container" style="display:none">
+    <!-- Will be populated by JavaScript -->
+  </div>
+
+  </div>
+
+  <script>
+  var voicesSamplesLoaded = false;
+  
+  async function loadVoiceSamples(){
+    if(voicesSamplesLoaded) return;
+    voicesSamplesLoaded = true;
+    
+    try{
+      const res = await fetch('/api/voices/samples');
+      const data = await res.json();
+      if(!data.ok || !data.voices){
+        document.getElementById('voices-loading').textContent = 'No voice samples available';
+        return;
+      }
+      
+      const container = document.getElementById('voices-container');
+      const langs = ['english', 'hindi', 'urdu', 'hinglish'];
+      const langLabels = {
+        'english': '🇺🇸 English',
+        'hindi': '🇮🇳 Hindi',
+        'urdu': '🇵🇰 Urdu',
+        'hinglish': '🇮🇳 Hinglish (Hindi+English)'
+      };
+      
+      let html = '';
+      for(const lang of langs){
+        if(!data.voices[lang]) continue;
+        html += `<div style="margin-bottom:20px">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">${langLabels[lang]}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">`;
+        
+        for(const voice of data.voices[lang]){
+          html += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div style="font-weight:700;font-size:12px;color:var(--text)">${voice.name}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">ID: ${voice.voice_id}</div>
+            </div>
+            <audio controls style="width:100%;height:28px" controlsList="nodownload">
+              <source src="${voice.url}" type="audio/mpeg">
+            </audio>
+          </div>`;
+        }
+        
+        html += '</div></div>';
+      }
+      
+      container.innerHTML = html;
+      document.getElementById('voices-loading').style.display = 'none';
+      container.style.display = 'block';
+    }catch(e){
+      document.getElementById('voices-loading').textContent = 'Error loading voice samples: ' + e.message;
+    }
+  }
+  </script>
+
+</div>
+
 </div>
 
 </div></div>
@@ -2645,6 +2766,7 @@ function navTo(name,el){
   if(name==='studio')   loadStudioVideos();
   if(name==='branding') loadBrandingAssets();
   if(name==='health')   runChannelAudit();
+  if(name==='voices')   loadVoiceSamples();
 }
 var _pipelineOrder=['trending','script','seo','thumbnail','queue'];
 
@@ -2841,6 +2963,35 @@ async function fetchJsonSafe(url, opts){
 // ===== TRENDING (with web search) =====
 var trendData=[];
 var _trendActiveBtn=null;
+var selectedChannelSlug=''; // Track which channel is being used for this session
+var selectedChannelLanguage='english'; // Display language for that channel
+
+function setSelectedChannel(slug) {
+  selectedChannelSlug = slug;
+  // Find the channel and get its niche (which determines language style)
+  var ch = _ytChannels.find(function(c) { return c.slug === slug; });
+  if (ch) {
+    // Derive language from channel niche/config
+    // For now, use global CHANNEL_LANGUAGE setting
+    // In future, could store language per channel
+    var langSelect = document.getElementById('cfg-lang');
+    if (langSelect) {
+      var langText = langSelect.options[langSelect.selectedIndex].text;
+      selectedChannelLanguage = langSelect.value || 'english';
+      var displayEl = document.getElementById('selected-channel-info');
+      if (displayEl) {
+        displayEl.textContent = '✓ Using: ' + ch.name + ' (' + langText + ')';
+      }
+    }
+  } else if (slug === '') {
+    selectedChannelSlug = '';
+    var displayEl = document.getElementById('selected-channel-info');
+    if (displayEl) {
+      displayEl.textContent = '🌐 Default channel';
+    }
+  }
+}
+
 async function getTrending(filter,btnEl){
   filter=filter||'live';
   // Show loading on the clicked button, reset previous
@@ -2967,6 +3118,30 @@ function renderTrends(data){
         '<span class="tag t-accent">CPM '+esc(t.cpm_range)+'</span>'+
       '</div>'+
       '<div class="trend-why">'+esc(t.why_now)+'</div>'+
+      '<div style="background:var(--bg3);padding:8px;border-radius:5px;margin-bottom:8px">'+
+        '<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">🔊 Voice (optional)</label>'+
+        '<select id="trend-voice-'+i+'" style="width:100%;font-size:11px">'+
+          '<option value="">🌐 Use channel default</option>'+
+          '<optgroup label="🇺🇸 English">'+
+            '<option value="en-US-ChristopherNeural">Christopher (Documentary)</option>'+
+            '<option value="en-US-BrianNeural">Brian (Professional)</option>'+
+            '<option value="en-US-GuyNeural">Guy (Deep voice)</option>'+
+            '<option value="en-GB-RyanNeural">Ryan (British)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇮🇳 Hindi">'+
+            '<option value="hi-IN-MadhurNeural">Madhur (Male)</option>'+
+            '<option value="hi-IN-SwaraNeural">Swara (Female)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇵🇰 Urdu">'+
+            '<option value="ur-PK-AsadNeural">Asad (Male)</option>'+
+            '<option value="ur-PK-UzmaNeural">Uzma (Female)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇮🇳 Hinglish">'+
+            '<option value="en-IN-PrabhatNeural">Prabhat (Male)</option>'+
+            '<option value="en-IN-NeerjaNeural">Neerja (Female)</option>'+
+          '</optgroup>'+
+        '</select>'+
+      '</div>'+
       '<div class="trend-action">'+
         '<button class="btn btn-primary btn-sm" onclick="useForScript('+i+')">&#9997;&#65039; Script</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="useForSEO('+i+')">&#128269; SEO</button>'+
@@ -2977,7 +3152,13 @@ function renderTrends(data){
 }
 
 function useForScript(i){document.getElementById('sc-topic').value=trendData[i].title;navTo('script',document.querySelectorAll('.nav-item')[1]);}
-function addTrendToQueue(i,btn){addQueueItem(trendData[i].title,trendData[i].type);if(btn){btn.textContent='&#10003; Added';btn.disabled=true;}}
+function addTrendToQueue(i,btn){
+  var voiceId=(document.getElementById('trend-voice-'+i)||{}).value||'';
+  var meta=voiceId?{voice_id:voiceId}:{};
+  if(selectedChannelSlug){meta.channel_slug=selectedChannelSlug;}
+  addQueueItem(trendData[i].title,trendData[i].type,meta);
+  if(btn){btn.textContent='&#10003; Added';btn.disabled=true;}
+}
 function addAllToQueue(){trendData.forEach(function(t){addQueueItem(t.title,t.type);});alert(trendData.length+' topics added!');}
 function copyTrends(btn){navigator.clipboard.writeText(trendData.map(function(t){return t.title;}).join('\n'));if(btn){var o=btn.textContent;btn.textContent='Copied!';setTimeout(function(){btn.textContent=o;},1500);}}
 
@@ -3183,6 +3364,8 @@ function addQueueItem(title,type,meta){
     scriptText:meta.scriptText||'',
     seoTitle:meta.seoTitle||'',seoDescription:meta.seoDescription||'',
     seoTags:meta.seoTags||'',thumbDataUrl:meta.thumbDataUrl||'',
+    voice_id:meta.voice_id||'',
+    channel_slug:meta.channel_slug||'',
     hasScript:meta.hasScript||false,hasSEO:meta.hasSEO||false,hasThumb:meta.hasThumb||false
   });
   saveQ();renderQueue();
@@ -3191,7 +3374,9 @@ function addManualToQueue(){
   var t=document.getElementById('q-topic-input').value.trim();
   var d=document.getElementById('q-date-input').value;
   if(!t){alert('Enter a topic.');return;}
-  queue.push({id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending'});
+  var item={id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending'};
+  if(selectedChannelSlug){item.channel_slug=selectedChannelSlug;}
+  queue.push(item);
   document.getElementById('q-topic-input').value='';
   saveQ();renderQueue();
 }
@@ -3209,7 +3394,9 @@ async function generateFullPlan(){
     var today=new Date();
     plan.forEach(function(item){
       var d=new Date(today);d.setDate(d.getDate()+(item.day_offset||0));
-      queue.push({id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending'});
+      var qItem={id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending'};
+      if(selectedChannelSlug){qItem.channel_slug=selectedChannelSlug;}
+      queue.push(qItem);
     });
     saveQ();renderQueue();
   }catch(e){alert('Error. Try again.');}
@@ -3272,6 +3459,31 @@ function renderQueue(){
           +(item.seoTitle?'<div style="margin-top:10px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">SEO TITLE</div><div style="font-size:12px;color:var(--text)">'+esc(item.seoTitle)+'</div></div>':'')
           +(item.seoDescription?'<div style="margin-top:8px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">DESCRIPTION PREVIEW</div><div style="font-size:11px;color:var(--muted);max-height:70px;overflow-y:auto;white-space:pre-wrap;background:var(--bg3);padding:7px 9px;border-radius:6px">'+esc(item.seoDescription.slice(0,300))+(item.seoDescription.length>300?'&hellip;':'')+'</div></div>':'')
           +(item.seoTags?'<div style="margin-top:8px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">TAGS</div><div style="font-size:10px;color:var(--muted)">'+esc(item.seoTags.slice(0,200))+'</div></div>':'')
+          +'<div style="margin-top:10px;background:var(--bg2);padding:10px;border-radius:6px;border:1px solid var(--border)">'
+            +'<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">🔊 Voice for this video</div>'
+            +'<select id="voice-q-'+item.id+'" onchange="setQItemVoice('+item.id+', this.value)" style="width:100%;margin-bottom:6px">'
+              +'<option value="">🌐 Use channel default</option>'
+              +'<optgroup label="🇺🇸 English">'
+                +'<option value="en-US-ChristopherNeural">Christopher (Documentary)</option>'
+                +'<option value="en-US-BrianNeural">Brian (Professional)</option>'
+                +'<option value="en-US-GuyNeural">Guy (Deep voice)</option>'
+                +'<option value="en-GB-RyanNeural">Ryan (British)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇮🇳 Hindi">'
+                +'<option value="hi-IN-MadhurNeural">Madhur (Male)</option>'
+                +'<option value="hi-IN-SwaraNeural">Swara (Female)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇵🇰 Urdu">'
+                +'<option value="ur-PK-AsadNeural">Asad (Male)</option>'
+                +'<option value="ur-PK-UzmaNeural">Uzma (Female)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇮🇳 Hinglish">'
+                +'<option value="en-IN-PrabhatNeural">Prabhat (Male)</option>'
+                +'<option value="en-IN-NeerjaNeural">Neerja (Female)</option>'
+              +'</optgroup>'
+            +'</select>'
+            +'<div style="font-size:9px;color:var(--dim)">Test voices in Voice Test tab • Language default used if not selected above</div>'
+          +'</div>'
           +'<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">'
             +'<button class="btn btn-primary btn-sm" onclick="scriptFromQ(\''+safeTitle+'\')">&#9997;&#65039; Edit Script</button>'
             +'<button class="btn btn-ghost btn-sm" onclick="navTo(\'seo\',document.querySelectorAll(\'.nav-item\')[2])">&#128269; SEO</button>'
@@ -3295,6 +3507,14 @@ function toggleQCard(id){
   if(!body)return;
   body.style.display=body.style.display==='none'||body.style.display===''?'block':'none';
 }
+
+function setQItemVoice(id, voiceId){
+  var item=queue.find(function(q){return q.id===id;});
+  if(!item)return;
+  item.voice_id = voiceId || '';
+  saveQ();
+}
+
 function scriptFromQ(title){document.getElementById('sc-topic').value=title;navTo('script',document.querySelectorAll('.nav-item')[1]);}
 
 function addSEOToQueue(){
@@ -4304,12 +4524,15 @@ function renderChannelList() {
     el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0;text-align:center">No channels connected yet. Add your first channel below.</div>';
     return;
   }
-  var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+  var html = '<div style="display:flex;flex-direction:column;gap:10px">';
   _ytChannels.forEach(function(ch) {
     var isDefault = ch.is_default;
     var statusColor = ch.has_token ? 'var(--green)' : 'var(--red)';
     var statusText = ch.has_token ? '✓ Connected' : '✗ Token missing';
-    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:7px;border:1px solid ' + (isDefault ? 'rgba(61,219,160,0.3)' : 'var(--border)') + '">';
+    html += '<div style="background:var(--bg3);border-radius:7px;border:1px solid ' + (isDefault ? 'rgba(61,219,160,0.3)' : 'var(--border)') + ';padding:10px">';
+    
+    // Header with name and status
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
     html += '<div style="flex:1">';
     html += '<div style="font-size:12px;font-weight:600;color:var(--text)">' + (ch.name || ch.slug) + '</div>';
     html += '<div style="font-size:10px;color:var(--muted)">' + (ch.channel_id || 'No ID') + ' &nbsp;·&nbsp; <span style="color:' + statusColor + '">' + statusText + '</span></div>';
@@ -4321,26 +4544,165 @@ function renderChannelList() {
     }
     html += '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--red)" onclick="removeChannel(\'' + ch.slug + '\',\'' + (ch.name||ch.slug).replace(/'/g,"\\'") + '\')">✗</button>';
     html += '</div>';
+    
+    // Voice selector (new)
+    html += '<div style="background:var(--bg2);padding:8px;border-radius:5px;border:1px solid var(--border)">';
+    html += '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px">Voice for this channel</label>';
+    html += '<select id="voice-' + ch.slug + '" onchange="setChannelVoice(\'' + ch.slug + '\', this.value)" style="width:100%">';
+    html += '<option value="">🌐 Use global default</option>';
+    
+    // Voice groups by language
+    var voiceGroups = {
+      'english': ['en-US-ChristopherNeural', 'en-US-BrianNeural', 'en-US-GuyNeural', 'en-GB-RyanNeural'],
+      'hindi': ['hi-IN-MadhurNeural', 'hi-IN-SwaraNeural'],
+      'urdu': ['ur-PK-AsadNeural', 'ur-PK-UzmaNeural'],
+      'hinglish': ['en-IN-PrabhatNeural', 'en-IN-NeerjaNeural']
+    };
+    var voiceNames = {
+      'en-US-ChristopherNeural': 'Christopher (Documentary)',
+      'en-US-BrianNeural': 'Brian (Professional)',
+      'en-US-GuyNeural': 'Guy (Deep voice)',
+      'en-GB-RyanNeural': 'Ryan (British)',
+      'hi-IN-MadhurNeural': 'Madhur (Male)',
+      'hi-IN-SwaraNeural': 'Swara (Female)',
+      'ur-PK-AsadNeural': 'Asad (Male)',
+      'ur-PK-UzmaNeural': 'Uzma (Female)',
+      'en-IN-PrabhatNeural': 'Prabhat (Male)',
+      'en-IN-NeerjaNeural': 'Neerja (Female)'
+    };
+    var langLabels = {'english': '🇺🇸 English', 'hindi': '🇮🇳 Hindi', 'urdu': '🇵🇰 Urdu', 'hinglish': '🇮🇳 Hinglish'};
+    
+    for (var lang in voiceGroups) {
+      html += '<optgroup label="' + langLabels[lang] + '">';
+      voiceGroups[lang].forEach(function(voiceId) {
+        html += '<option value="' + voiceId + '">' + voiceNames[voiceId] + '</option>';
+      });
+      html += '</optgroup>';
+    }
+    
+    html += '</select>';
+    html += '<div style="font-size:9px;color:var(--dim);margin-top:4px">Or test voices in the Voice Test tab</div>';
+    html += '</div>';
+    
+    html += '</div>';
   });
   html += '</div>';
   el.innerHTML = html;
+  
+  // Load current voice for each channel
+  _ytChannels.forEach(function(ch) {
+    loadChannelVoice(ch.slug);
+  });
+}
+
+function loadChannelVoice(slug) {
+  fetch('/api/channels/' + slug + '/voice')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok && d.voice_id) {
+        var sel = document.getElementById('voice-' + slug);
+        if (sel) sel.value = d.voice_id;
+      }
+    })
+    .catch(function() {});
+}
+
+function setChannelVoice(slug, voiceId) {
+  if (!voiceId) return; // "Use global default" selected
+  fetch('/api/channels/' + slug + '/voice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ voice_id: voiceId })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) {
+        alert('Failed to set voice: ' + (d.error || 'Unknown error'));
+        loadChannelVoice(slug); // Revert to previous
+      }
+    })
+    .catch(function(e) {
+      alert('Error: ' + e);
+      loadChannelVoice(slug); // Revert to previous
+    });
 }
 
 function populateChannelDropdown() {
   var sel = document.getElementById('pl-channel-select');
-  if (!sel) return;
-  sel.innerHTML = '';
-  if (_ytChannels.length === 0) {
-    sel.innerHTML = '<option value="">No channels — add in Settings</option>';
-    return;
+  var trendSel = document.getElementById('trending-channel-select');
+  var studioSel = document.getElementById('stu-channel');
+  var brandSel = document.getElementById('brand-channel-select');
+  var healthSel = document.getElementById('health-channel-slug-sel');
+  if (!sel && !trendSel && !studioSel && !brandSel && !healthSel) return;
+  
+  // Populate Pipeline upload channel selector
+  if (sel) {
+    sel.innerHTML = '';
+    if (_ytChannels.length === 0) {
+      sel.innerHTML = '<option value="">No channels — add in Settings</option>';
+    } else {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        if (ch.is_default) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
   }
-  _ytChannels.forEach(function(ch) {
-    var opt = document.createElement('option');
-    opt.value = ch.slug;
-    opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
-    if (ch.is_default) opt.selected = true;
-    sel.appendChild(opt);
-  });
+  
+  // Populate Trending/Script channel selector
+  if (trendSel) {
+    trendSel.innerHTML = '<option value="">🌐 Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        trendSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (studioSel) {
+    studioSel.innerHTML = '<option value="">Default</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = ch.name || ch.slug;
+        if (ch.is_default) opt.selected = true;
+        studioSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (brandSel) {
+    brandSel.innerHTML = '<option value="">Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        if (ch.is_default) opt.selected = true;
+        brandSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (healthSel) {
+    var prev = healthSel.value || '';
+    healthSel.innerHTML = '<option value="">Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        healthSel.appendChild(opt);
+      });
+    }
+    healthSel.value = prev;
+  }
 }
 
 function addYouTubeChannel() {
@@ -4430,7 +4792,7 @@ function connectYouTube(){
   }
   ytTokenClient=google.accounts.oauth2.initTokenClient({
     client_id:clientId,
-    scope:'https://www.googleapis.com/auth/youtube.force-ssl',
+    scope:'https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
     callback:function(response){
       if(response.error){
         document.getElementById('yt-connect-status').textContent='✗ '+response.error+' — check Client ID and authorized origins';
@@ -4641,6 +5003,8 @@ function runPipelineForTopic(itemOrTopic){
   var payload={topic:topic};
   if(item.scriptText)payload.scriptText=item.scriptText;
   if(item.guidance)payload.guidance=item.guidance;
+  if(item.voice_id)payload.voice_id=item.voice_id;
+  if(item.channel_slug)payload.channel_slug=item.channel_slug;
   if(item.hasSEO){
     payload.seoTitle=item.seoTitle||'';
     payload.seoDescription=item.seoDescription||'';
@@ -4842,7 +5206,7 @@ function _loadStudioChannels(){
   fetch('/api/channels').then(function(r){return r.json();}).then(function(list){
     var sel=document.getElementById('stu-channel');
     var html='<option value="">Default</option>';
-    (list||[]).forEach(function(ch){
+    ((list && list.channels) || []).forEach(function(ch){
       html+='<option value="'+_escHtml(ch.slug)+'"'+(ch.is_default?' selected':'')+'>'+_escHtml(ch.name)+'</option>';
     });
     sel.innerHTML=html;
@@ -5058,7 +5422,7 @@ function generateBranding(){
   if(!name){st.textContent='Channel name is required';st.style.color='var(--red)';return;}
   btn.disabled=true;st.textContent='Generating…';st.style.color='var(--muted)';
   fetch('/api/branding/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({channel_name:name,tagline:tag})
+    body:JSON.stringify({channelName:name,tagline:tag})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Assets generated!';st.style.color='var(--green)';loadBrandingAssets();}
@@ -5069,8 +5433,9 @@ function generateBranding(){
 function uploadBannerToYT(){
   var btn=document.getElementById('brand-upload-banner-btn');
   var st=document.getElementById('brand-upload-status');
+  var channel=(document.getElementById('brand-channel-select')||{}).value||null;
   btn.disabled=true;st.textContent='Uploading banner…';st.style.color='var(--muted)';
-  fetch('/api/branding/upload-banner',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  fetch('/api/branding/upload-banner',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:channel})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Banner uploaded to YouTube!';st.style.color='var(--green)';}
@@ -5081,11 +5446,12 @@ function uploadBannerToYT(){
 function setChannelTrailer(){
   var vid=document.getElementById('brand-trailer-id').value.trim();
   var st=document.getElementById('brand-upload-status');
+  var channel=(document.getElementById('brand-channel-select')||{}).value||null;
   if(!vid){st.textContent='Enter a video ID';st.style.color='var(--red)';return;}
   var btn=document.getElementById('brand-trailer-btn');
   btn.disabled=true;st.textContent='Setting trailer…';st.style.color='var(--muted)';
   fetch('/api/branding/set-trailer',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({video_id:vid})
+    body:JSON.stringify({videoId:vid,channel:channel})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Trailer set!';st.style.color='var(--green)';}
@@ -5094,16 +5460,27 @@ function setChannelTrailer(){
 }
 
 // ===== CHANNEL HEALTH =====
-var _auditCache=null;
+var _auditCacheBySlug={};
+function _healthSlug(){
+  var sel=document.getElementById('health-channel-slug-sel');
+  return sel?sel.value:'';
+}
+function _healthCacheKey(){
+  return _healthSlug() || '__default__';
+}
+function _healthChannelChanged(){
+  runChannelAudit(true);
+}
 function runChannelAudit(){
-  if(_auditCache){_renderAudit(_auditCache);return;}
+  var force=(arguments && arguments[0]===true);
+  var cacheKey=_healthCacheKey();
+  if(!force && _auditCacheBySlug[cacheKey]){_renderAudit(_auditCacheBySlug[cacheKey]);return;}
   var btn=document.getElementById('health-audit-btn');
   var errBox=document.getElementById('health-audit-error');
   if(errBox)errBox.style.display='none';
   btn.disabled=true;document.getElementById('health-audit-icon').textContent='⏳';
   // Pass selected channel slug if available
-  var slugSel=document.getElementById('health-channel-slug-sel');
-  var slug=slugSel?slugSel.value:'';
+  var slug=_healthSlug();
   var url='/api/channel/audit'+(slug?'?slug='+encodeURIComponent(slug):'');
   fetch(url).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
@@ -5111,7 +5488,7 @@ function runChannelAudit(){
       _showAuditError(d.error||'unknown', d.error_code, d.channel);
       return;
     }
-    _auditCache=d;
+    _auditCacheBySlug[cacheKey]=d;
     _renderAudit(d);
   }).catch(function(e){
     btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
@@ -5208,33 +5585,36 @@ function saveChannelInfo(){
   var st=document.getElementById('health-save-status');
   st.textContent='Saving…';st.style.color='var(--muted)';
   var kw=document.getElementById('health-keywords').value.trim();
+  var slug=_healthSlug()||null;
   fetch('/api/channel/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     description:document.getElementById('health-desc').value.trim(),
     keywords:kw,
     country:document.getElementById('health-country').value.trim(),
-    language:document.getElementById('health-language').value.trim()
+    language:document.getElementById('health-language').value.trim(),
+    channel:slug
   })}).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){st.textContent='Saved!';st.style.color='var(--green)';_auditCache=null;}
+    if(d.ok){st.textContent='Saved!';st.style.color='var(--green)';_auditCacheBySlug={};}
     else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
   }).catch(function(e){st.textContent=e.message;st.style.color='var(--red)';});
 }
 
 function fixSingleVideo(videoId,btn){
   if(btn)btn.disabled=true;
-  fetch('/api/channel/fix-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_id:videoId})
+  fetch('/api/channel/fix-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:videoId,channel:_healthSlug()||null})
   }).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){_auditCache=null;runChannelAudit();}
+    if(d.ok){_auditCacheBySlug={};runChannelAudit();}
     else{alert('Error: '+(d.error||'unknown'));if(btn)btn.disabled=false;}
   }).catch(function(e){alert(e.message);if(btn)btn.disabled=false;});
 }
 
 function fixAllVideos(){
   var btn=document.getElementById('health-fixall-btn');
+  var slug=_healthSlug()||null;
   btn.disabled=true;btn.textContent='Fixing…';
-  fetch('/api/channel/fix-all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  fetch('/api/channel/fix-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:slug})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';
-    if(d.ok){_auditCache=null;runChannelAudit();}
+    if(d.ok){_auditCacheBySlug={};runChannelAudit();}
     else{alert('Error: '+(d.error||'unknown'));}
   }).catch(function(e){btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';alert(e.message);});
 }
@@ -5418,9 +5798,9 @@ function uploadToSocialPlatforms(){
     <!-- Shorts option -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--bg3);border-radius:8px">
       <label style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;margin:0">
-        <input type="checkbox" id="pl-shorts-check" style="margin-right:4px"> Generate YouTube Shorts
+        <input type="checkbox" id="pl-shorts-check" style="margin-right:4px" checked> Generate YouTube Shorts
       </label>
-      <select id="pl-shorts-count" style="font-size:11px;padding:3px 8px;width:auto" disabled>
+      <select id="pl-shorts-count" style="font-size:11px;padding:3px 8px;width:auto">
         <option value="1">1 Short</option>
         <option value="2" selected>2 Shorts</option>
         <option value="3">3 Shorts</option>

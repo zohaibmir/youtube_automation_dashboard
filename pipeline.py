@@ -427,7 +427,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
-               guidance: str | None = None, shorts_count: int = 0) -> tuple:
+               guidance: str | None = None, voice_id: str | None = None, shorts_count: int = 0) -> tuple:
     """Run pipeline steps 1–5 (generate + build) WITHOUT uploading.
 
     Parallel-safe: uses an isolated runs/<job_id>/ working directory.
@@ -472,7 +472,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         segments = content["segments"]
 
         _p(f"Generating audio for {len(segments)} segments…")
-        audio_files = generate_audio_segments(segments, out_dir=audio_dir)
+        audio_files = generate_audio_segments(segments, out_dir=audio_dir, edge_voice=voice_id, language=CHANNEL_LANGUAGE)
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         _p(f"Fetching visuals ({VISUAL_MODE}) for {len(segments)} segments…")

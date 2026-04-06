@@ -170,6 +170,7 @@ _PUBLIC_STATIC_FILES = {
     "/southasian_youtube_dashboard.html",
     "/thumbnail.jpg",
     "/favicon.ico",
+    "/voices.json",
 }
 _PUBLIC_STATIC_PREFIXES = (
     "/output/",
@@ -177,6 +178,7 @@ _PUBLIC_STATIC_PREFIXES = (
     "/images/",
     "/branding/",
     "/music/",
+    "/scripts/voice_samples/",
 )
 _BLOCKED_STATIC_PREFIXES = (
     "/.git",
@@ -222,6 +224,7 @@ _AUTH_ENABLED = bool(_DASHBOARD_USERNAME and _DASHBOARD_PASSWORD)
 _pipeline_job: dict = {
     "status":        "idle",   # idle | running | ready | uploading | done | failed
     "topic":         None,
+    "channel_slug":  None,
     "message":       "",
     "video_url":     None,
     "thumbnail_url": None,
@@ -242,7 +245,7 @@ _pending_channel_oauth: dict = {}
 _pending_channel_oauth_lock = threading.Lock()
 
 
-def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, shorts_count=0) -> None:
+def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, voice_id=None, shorts_count=0, channel_slug=None) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
     try:
         from pipeline import run_preview
@@ -259,7 +262,7 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
         video_path, thumb_path, content, vid_id = run_preview(
             topic, progress_cb=_progress,
             script_text=script_text, seo=seo, thumb_data_url=thumb_data_url,
-            guidance=guidance, shorts_count=shorts_count,
+            guidance=guidance, voice_id=voice_id, shorts_count=shorts_count,
         )
         slug = video_path.replace("\\", "/").split("/")[-1]  # just the filename
         shorts_paths = content.pop("_shorts_paths", [])
@@ -272,6 +275,7 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
                 "title":         content.get("title", topic),
                 "vid_db_id":     vid_id,
                 "shorts_count":  len(shorts_paths),
+                "channel_slug":  channel_slug,
                 "_content":      content,
                 "_video_path":   video_path,
                 "_thumb_path":   thumb_path,
@@ -340,9 +344,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         return True
 
     def do_GET(self) -> None:
-        if not self._check_auth():
-            return
         path = self.path.split("?")[0]
+        # OAuth callback must be reachable without credentials (Google redirects here via popup)
+        if path != "/api/channels/oauth/callback":
+            if not self._check_auth():
+                return
         if path == "/":
             self.send_response(302)
             self.send_header("Location", "/youtube_automation_dashboard.html")
@@ -366,6 +372,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channel_oauth_callback()
         elif path == "/api/youtube/oauth-diagnostics":
             self._handle_youtube_oauth_diagnostics()
+        elif path == "/api/voices/samples":
+            self._handle_voices_samples()
+        elif path.startswith("/api/channels/") and path.endswith("/voice"):
+            self._handle_channel_voice_get(path)
         elif path == "/api/social/platforms":
             self._handle_social_platforms_get()
         elif path == "/api/branding/assets":
@@ -399,7 +409,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({
                     "status": "idle", "topic": None, "message": "",
                     "video_url": None, "thumbnail_url": None, "title": None,
-                    "vid_db_id": None, "youtube_url": None, "error": None,
+                    "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             self._json_response({"ok": True})
@@ -415,6 +425,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channel_add()
         elif path == "/api/channels/default":
             self._handle_channel_set_default()
+        elif path.startswith("/api/channels/") and path.endswith("/voice"):
+            self._handle_channel_voice_post(path)
         elif path == "/api/social/config":
             self._handle_social_config_post()
         elif path == "/api/social/upload":
@@ -462,6 +474,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
             topic = data.get("topic", "").strip()
+            channel_slug   = data.get("channel_slug", "").strip() or None
             if not topic:
                 self._json_response({"ok": False, "error": "topic required"}); return
             with _pipeline_lock:
@@ -470,7 +483,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({
                     "status": "running", "topic": topic, "message": "Starting…",
                     "video_url": None, "thumbnail_url": None, "title": None,
-                    "vid_db_id": None, "youtube_url": None, "error": None,
+                    "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": channel_slug,
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             # Optional pre-computed assets from dashboard
@@ -480,6 +493,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             seo_tags_raw   = data.get("seoTags", "").strip() or None
             thumb_data_url = data.get("thumbDataUrl", "").strip() or None
             guidance       = data.get("guidance", "").strip() or None
+            voice_id       = data.get("voice_id", "").strip() or None
             shorts_count   = int(data.get("shortsCount", 0) or 0)
             seo = None
             if seo_title or seo_description or seo_tags_raw:
@@ -492,7 +506,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 target=_run_pipeline_bg,
                 args=(topic,),
                 kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url,
-                        "guidance": guidance, "shorts_count": shorts_count},
+                        "guidance": guidance, "voice_id": voice_id, "shorts_count": shorts_count, "channel_slug": channel_slug},
                 daemon=True,
             )
             t.start()
@@ -587,7 +601,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             _pipeline_job.update({
                 "status": "idle", "topic": None, "message": "",
                 "video_url": None, "thumbnail_url": None, "title": None,
-                "vid_db_id": None, "youtube_url": None, "error": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
                 "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
             })
         self._json_response(result)
@@ -706,7 +720,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ── Channel management ─────────────────────────────────────────────────
 
     def _handle_channels_get(self) -> None:
-        if not self._is_request_allowed(require_localhost=False): return
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
         try:
             from youtube_uploader import list_channels
             self._json_response({"ok": True, "channels": list_channels()})
@@ -982,6 +997,81 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         ok = remove_channel(slug)
         self._json_response({"ok": ok, "error": None if ok else "Channel not found"})
 
+    def _handle_channel_voice_get(self, path: str) -> None:
+        """GET /api/channels/<slug>/voice — Get channel's voice setting."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        try:
+            slug = path.replace("/api/channels/", "").replace("/voice", "").strip("/")
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"}); return
+            from voice_config import get_channel_voice
+            voice_id = get_channel_voice(slug)
+            self._json_response({"ok": True, "voice_id": voice_id})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_voice_post(self, path: str) -> None:
+        """POST /api/channels/<slug>/voice — Set channel's voice."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        try:
+            slug = path.replace("/api/channels/", "").replace("/voice", "").strip("/")
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"}); return
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            voice_id = data.get("voice_id", "").strip()
+            if not voice_id:
+                self._json_response({"ok": False, "error": "voice_id required"}); return
+            from voice_config import set_channel_voice
+            ok = set_channel_voice(slug, voice_id)
+            self._json_response({
+                "ok": ok,
+                "voice_id": voice_id if ok else None,
+                "error": None if ok else "Failed to set voice"
+            })
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    # ── Voice endpoints ───────────────────────────────────────────────────────
+
+    def _handle_voices_samples(self) -> None:
+        """GET /api/voices/samples — List available voice samples organized by language."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        
+        from pathlib import Path
+        voice_samples_dir = Path(__file__).parent / "scripts" / "voice_samples"
+        
+        # Organize voice samples by language
+        voices_by_lang = {}
+        
+        if voice_samples_dir.exists():
+            for mp3_file in sorted(voice_samples_dir.glob("*.mp3")):
+                filename = mp3_file.name
+                # Parse filename: lang_voiceid_name.mp3
+                parts = filename.replace(".mp3", "").split("_", 2)
+                if len(parts) >= 3:
+                    lang, voice_id = parts[0], parts[1]
+                    voice_name = parts[2].replace("_", " ")
+                    
+                    if lang not in voices_by_lang:
+                        voices_by_lang[lang] = []
+                    
+                    voices_by_lang[lang].append({
+                        "voice_id": voice_id,
+                        "name": voice_name,
+                        "url": f"/scripts/voice_samples/{filename}",
+                        "file": filename,
+                    })
+        
+        self._json_response({
+            "ok": True,
+            "voices": voices_by_lang,
+            "total": sum(len(v) for v in voices_by_lang.values()),
+        })
+
     # ── Social platform endpoints ─────────────────────────────────────────────
 
     def _handle_social_platforms_get(self) -> None:
@@ -1104,8 +1194,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """POST /api/channel/fix-all — Fix all videos with issues."""
         if not self._is_request_allowed(require_localhost=False): return
         try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
             from channel_manager import fix_all_videos
-            result = fix_all_videos()
+            result = fix_all_videos(data.get("channel") or None)
             self._json_response(result)
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})

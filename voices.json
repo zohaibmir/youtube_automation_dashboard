@@ -1,0 +1,103 @@
+{
+  "edge_tts_voices": {
+    "recommended": [
+      {
+        "id": "en-US-ChristopherNeural",
+        "name": "Christopher (US) - Authoritative",
+        "gender": "male",
+        "accent": "USA"
+      },
+      {
+        "id": "en-US-BrianNeural",
+        "name": "Brian (US) - Professional",
+        "gender": "male",
+        "accent": "USA"
+      },
+      {
+        "id": "en-US-EricNeural",
+        "name": "Eric (US) - Friendly",
+        "gender": "male",
+        "accent": "USA"
+      },
+      {
+        "id": "en-US-GuyNeural",
+        "name": "Guy (US) - Deep Voice",
+        "gender": "male",
+        "accent": "USA"
+      },
+      {
+        "id": "en-US-AriaNeural",
+        "name": "Aria (US) - Female Professional",
+        "gender": "female",
+        "accent": "USA"
+      },
+      {
+        "id": "en-GB-RyanNeural",
+        "name": "Ryan (UK) - British Professional",
+        "gender": "male",
+        "accent": "British"
+      },
+      {
+        "id": "en-GB-ThomasNeural",
+        "name": "Thomas (UK) - British Male",
+        "gender": "male",
+        "accent": "British"
+      },
+      {
+        "id": "en-IN-PrabhatNeural",
+        "name": "Prabhat (India) - Indian English",
+        "gender": "male",
+        "accent": "Indian"
+      }
+    ],
+    "all": [
+      {"id": "en-AU-NatashaNeural", "name": "Natasha (Australia)"},
+      {"id": "en-AU-WilliamMultilingualNeural", "name": "William (Australia)"},
+      {"id": "en-CA-ClaraNeural", "name": "Clara (Canada)"},
+      {"id": "en-CA-LiamNeural", "name": "Liam (Canada)"},
+      {"id": "en-GB-LibbyNeural", "name": "Libby (UK)"},
+      {"id": "en-GB-MaisieNeural", "name": "Maisie (UK)"},
+      {"id": "en-GB-RyanNeural", "name": "Ryan (UK)"},
+      {"id": "en-GB-SoniaNeural", "name": "Sonia (UK)"},
+      {"id": "en-GB-ThomasNeural", "name": "Thomas (UK)"},
+      {"id": "en-HK-SamNeural", "name": "Sam (Hong Kong)"},
+      {"id": "en-HK-YanNeural", "name": "Yan (Hong Kong)"},
+      {"id": "en-IE-ConnorNeural", "name": "Connor (Ireland)"},
+      {"id": "en-IE-EmilyNeural", "name": "Emily (Ireland)"},
+      {"id": "en-IN-NeerjaExpressiveNeural", "name": "Neerja (India - Expressive)"},
+      {"id": "en-IN-NeerjaNeural", "name": "Neerja (India)"},
+      {"id": "en-IN-PrabhatNeural", "name": "Prabhat (India)"},
+      {"id": "en-KE-AsiliaNeural", "name": "Asilia (Kenya)"},
+      {"id": "en-KE-ChilembaNeural", "name": "Chilemba (Kenya)"},
+      {"id": "en-NG-AbeoNeural", "name": "Abeo (Nigeria)"},
+      {"id": "en-NG-EzinneNeural", "name": "Ezinne (Nigeria)"},
+      {"id": "en-NZ-MitchellNeural", "name": "Mitchell (New Zealand)"},
+      {"id": "en-NZ-MollyNeural", "name": "Molly (New Zealand)"},
+      {"id": "en-PH-JamesNeural", "name": "James (Philippines)"},
+      {"id": "en-PH-RosaNeural", "name": "Rosa (Philippines)"},
+      {"id": "en-SG-LunaNeural", "name": "Luna (Singapore)"},
+      {"id": "en-SG-WayneNeural", "name": "Wayne (Singapore)"},
+      {"id": "en-TZ-ElimuNeural", "name": "Elimu (Tanzania)"},
+      {"id": "en-TZ-ImaniNeural", "name": "Imani (Tanzania)"},
+      {"id": "en-US-AnaNeural", "name": "Ana (US)"},
+      {"id": "en-US-AndrewMultilingualNeural", "name": "Andrew (US - Multilingual)"},
+      {"id": "en-US-AndrewNeural", "name": "Andrew (US)"},
+      {"id": "en-US-AriaNeural", "name": "Aria (US)"},
+      {"id": "en-US-AvaMultilingualNeural", "name": "Ava (US - Multilingual)"},
+      {"id": "en-US-AvaNeural", "name": "Ava (US)"},
+      {"id": "en-US-BrianMultilingualNeural", "name": "Brian (US - Multilingual)"},
+      {"id": "en-US-BrianNeural", "name": "Brian (US)"},
+      {"id": "en-US-ChristopherNeural", "name": "Christopher (US)"},
+      {"id": "en-US-EmmaMultilingualNeural", "name": "Emma (US - Multilingual)"},
+      {"id": "en-US-EmmaNeural", "name": "Emma (US)"},
+      {"id": "en-US-EricNeural", "name": "Eric (US)"},
+      {"id": "en-US-GuyNeural", "name": "Guy (US)"},
+      {"id": "en-US-JennyNeural", "name": "Jenny (US)"},
+      {"id": "en-US-MichelleNeural", "name": "Michelle (US)"},
+      {"id": "en-US-RogerNeural", "name": "Roger (US)"},
+      {"id": "en-US-SteffanNeural", "name": "Steffan (US)"},
+      {"id": "en-ZA-LeahNeural", "name": "Leah (South Africa)"},
+      {"id": "en-ZA-LukeNeural", "name": "Luke (South Africa)"}
+    ]
+  }
+}
