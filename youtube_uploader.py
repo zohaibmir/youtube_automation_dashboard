@@ -240,10 +240,20 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
 
     if creds and creds.expired and creds.refresh_token:
         logger.info("Refreshing expired YouTube token for channel...")
-        creds.refresh(Request())
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
-        return creds
+        try:
+            creds.refresh(Request())
+            with open(token_path, "w") as f:
+                f.write(creds.to_json())
+            return creds
+        except Exception as refresh_error:
+            error_str = str(refresh_error)
+            if "invalid_grant" in error_str.lower():
+                raise RuntimeError(
+                    f"YouTube token for '{channel_slug or 'default'}' has been revoked or expired by Google. "
+                    "Please re-authenticate: Settings → YouTube Channels → Remove this channel → Add Channel again."
+                )
+            else:
+                raise RuntimeError(f"Failed to refresh token: {error_str}")
 
     # No valid token — need to add channel first
     raise RuntimeError(
