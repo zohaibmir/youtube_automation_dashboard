@@ -738,6 +738,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "present": env_client_id_set,
                 "masked": env_client_id_masked,
             },
+            "web_client_secret": {
+                "present": bool(os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip()),
+            },
             "desktop_client_secrets": {
                 "path": client_secrets_path,
                 "exists": client_secrets_exists,
@@ -767,8 +770,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         tips = []
         if not env_client_id_set:
             tips.append("Set YOUTUBE_WEB_CLIENT_ID in hosted environment variables.")
+        if not os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip():
+            tips.append("Set YOUTUBE_WEB_CLIENT_SECRET in hosted environment variables.")
         if origin:
             tips.append(f"Add {origin} to Authorized JavaScript origins in Google Cloud OAuth Web client.")
+            tips.append(f"Add {origin}/api/channels/oauth/callback to Authorized redirect URIs in Google Cloud OAuth Web client.")
         if not client_secrets_exists:
             tips.append("Upload client_secrets.json to hosted volume and set YOUTUBE_CLIENT_SECRETS path.")
         if not any(c.get("has_token") for c in diagnostics["channels"]):
@@ -821,7 +827,42 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
 
             redirect_uri = f"{origin}/api/channels/oauth/callback"
-            flow = Flow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, scopes=YOUTUBE_SCOPES)
+
+            web_client_id = os.getenv("YOUTUBE_WEB_CLIENT_ID", "").strip()
+            web_client_secret = os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip()
+            flow = None
+
+            if web_client_id and web_client_secret:
+                web_cfg = {
+                    "web": {
+                        "client_id": web_client_id,
+                        "client_secret": web_client_secret,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "redirect_uris": [redirect_uri],
+                    }
+                }
+                flow = Flow.from_client_config(web_cfg, scopes=YOUTUBE_SCOPES)
+            else:
+                # Fallback: if client_secrets has a `web` block, use it.
+                try:
+                    cfg = json.loads(Path(YOUTUBE_CLIENT_SECRETS).read_text(encoding="utf-8"))
+                    if "web" in cfg:
+                        flow = Flow.from_client_config(cfg, scopes=YOUTUBE_SCOPES)
+                except Exception:
+                    pass
+
+            if flow is None:
+                self._json_response({
+                    "ok": False,
+                    "error": (
+                        "Hosted OAuth is not configured for Web client. "
+                        "Set YOUTUBE_WEB_CLIENT_ID and YOUTUBE_WEB_CLIENT_SECRET in Railway, "
+                        f"and add redirect URI: {redirect_uri}"
+                    ),
+                })
+                return
+
             flow.redirect_uri = redirect_uri
             auth_url, state = flow.authorization_url(
                 access_type="offline",
