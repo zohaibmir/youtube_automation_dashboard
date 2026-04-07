@@ -1087,6 +1087,7 @@ canvas{display:block;width:100%;height:auto}
         <select id="stu-video-select" onchange="studioVideoChanged()" style="margin-bottom:0"><option value="">Loading…</option></select>
       </div>
       <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="loadStudioVideos()">&#128260; Refresh</button>
+      <button class="btn btn-sm" style="background:#0b7;color:#fff" id="stu-download-btn" onclick="studioDownloadVideo()" title="Download video to your computer" style="display:none">&#11015; Download</button>
       <button class="btn btn-danger btn-sm" id="stu-delete-btn" onclick="studioDeleteVideo()" title="Delete selected video from local filesystem" style="display:none">&#128465; Delete</button>
     </div>
     <div id="stu-video-info" style="display:none;padding:10px;background:var(--bg3);border-radius:8px;margin-top:6px">
@@ -5403,9 +5404,11 @@ function studioVideoChanged(){
   var path=document.getElementById('stu-video-select').value;
   var info=document.getElementById('stu-video-info');
   var delBtn=document.getElementById('stu-delete-btn');
+  var dlBtn=document.getElementById('stu-download-btn');
   _studioInfo=null;
-  if(!path){info.style.display='none';if(delBtn)delBtn.style.display='none';return;}
+  if(!path){info.style.display='none';if(delBtn)delBtn.style.display='none';if(dlBtn)dlBtn.style.display='none';return;}
   if(delBtn)delBtn.style.display='';
+  if(dlBtn)dlBtn.style.display='';
   info.style.display='block';
   document.getElementById('stu-v-dur').textContent='\u2026';
   fetch('/api/studio/info/'+encodeURIComponent(path)).then(function(r){return r.json();}).then(function(d){
@@ -5495,6 +5498,19 @@ function studioExtractClips(){
   }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
 }
 
+function studioDownloadVideo(){
+  var vpath=document.getElementById('stu-video-select').value;
+  if(!vpath){return;}
+  var filename=vpath.split('/').pop();
+  var url='/api/studio/download/'+encodeURIComponent(filename);
+  var link=document.createElement('a');
+  link.href=url;
+  link.download=filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 function studioDeleteVideo(){
   var vpath=document.getElementById('stu-video-select').value;
   if(!vpath){return;}
@@ -5542,13 +5558,14 @@ function studioUploadMain(){
 }
 
 function studioUploadClips(){
-  if(!_studioClipPaths.length){alert('No clips extracted yet');return;}
+  var validClipPaths=_studioClipPaths.filter(function(p){return typeof p==='string'&&p.trim();});
+  if(!validClipPaths.length){alert('No clips extracted yet');return;}
   var st=document.getElementById('stu-upload-clips-status');
   var btn=document.getElementById('stu-upload-clips-btn');
-  btn.disabled=true;st.textContent='Uploading '+_studioClipPaths.length+' clip(s)\u2026';st.style.color='var(--muted)';
+  btn.disabled=true;st.textContent='Uploading '+validClipPaths.length+' clip(s)\u2026';st.style.color='var(--muted)';
   var tags=(document.getElementById('stu-main-tags').value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
   fetch('/api/studio/upload-clips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    clip_paths:_studioClipPaths,
+    clip_paths:validClipPaths,
     title:document.getElementById('stu-main-title').value.trim(),
     description:document.getElementById('stu-main-desc').value.trim(),
     tags:tags,

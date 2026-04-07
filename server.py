@@ -387,6 +387,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_videos_get()
         elif path.startswith("/api/studio/info/"):
             self._handle_studio_video_info(path)
+        elif path.startswith("/api/studio/download/"):
+            self._handle_studio_download_get(path)
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -1319,7 +1321,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
-            clip_paths = data.get("clip_paths", [])
+            raw_paths = data.get("clip_paths", [])
+            clip_paths = [p for p in raw_paths if isinstance(p, str) and p.strip()]
             content = {
                 "title": data.get("title", ""),
                 "description": data.get("description", ""),
@@ -1370,6 +1373,43 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response(delete_video(video_path))
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_studio_download_get(self, path: str) -> None:
+        """GET /api/studio/download/<encoded_filename> — Stream a video file for download."""
+        if not self._is_request_allowed(require_localhost=False): return
+        try:
+            import shutil
+            import urllib.parse
+            from config import OUTPUT_DIR
+            
+            filename = urllib.parse.unquote(path.replace("/api/studio/download/", "", 1))
+            video_path = Path(OUTPUT_DIR) / filename
+            
+            # Path traversal protection
+            if not str(video_path.resolve()).startswith(str(Path(OUTPUT_DIR).resolve())):
+                self.send_response(403)
+                self.end_headers()
+                return
+            
+            if not video_path.exists():
+                self._json_response({"ok": False, "error": "File not found"})
+                return
+            
+            # Stream file
+            self.send_response(200)
+            file_size = video_path.stat().st_size
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Content-Disposition", f"attachment; filename={filename}")
+            self.end_headers()
+            
+            with open(video_path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+        except Exception as e:
+            try:
+                self._json_response({"ok": False, "error": str(e)})
+            except:
+                pass
 
     def _handle_social_config_post(self) -> None:
         """POST /api/social/config — Save platform credentials.
