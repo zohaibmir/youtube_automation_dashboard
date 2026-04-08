@@ -418,8 +418,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             self._json_response({"ok": True})
-        elif path == "/api/pipeline/kill":
-            self._handle_pipeline_kill()
+        elif path == "/api/pipeline/kill" or path.startswith("/api/pipeline/kill/"):
+            self._handle_pipeline_kill(path)
         elif path == "/api/settings/sync-env":
             self._handle_settings_sync_env()
         elif path == "/api/settings":
@@ -652,10 +652,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({"status": "failed", "message": str(exc), "error": str(exc)})
             self._json_response({"ok": False, "error": str(exc)})
 
-    def _handle_pipeline_kill(self) -> None:
-        """POST /api/pipeline/kill — Kill a running pipeline process and clear lock."""
+    def _handle_pipeline_kill(self, path: str = "/api/pipeline/kill") -> None:
+        """POST /api/pipeline/kill[/<job_id>] — Kill running pipeline job(s) and clear lock."""
         from pipeline import kill_pipeline
-        result = kill_pipeline()
+        job_id = None
+        if path.startswith("/api/pipeline/kill/"):
+            job_id = path.rsplit("/", 1)[-1].strip() or None
+        if not job_id:
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(length)) if length else {}
+                if isinstance(data, dict):
+                    job_id = (data.get("job_id") or "").strip() or None
+            except Exception:
+                job_id = None
+
+        result = kill_pipeline(job_id=job_id)
         # Also reset the in-memory pipeline state
         with _pipeline_lock:
             _pipeline_job.update({
