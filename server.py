@@ -23,7 +23,7 @@ import json
 import os
 import sys
 import threading
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -1574,7 +1574,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = ThreadingHTTPServer(("", port), DashboardHandler)
+    # Railway can hit tight thread limits under aggressive polling; default to
+    # single-threaded HTTP in hosted environments unless explicitly overridden.
+    hosted = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+    use_threaded = os.environ.get("SERVER_THREADED", "0" if hosted else "1") == "1"
+    server_cls = ThreadingHTTPServer if use_threaded else HTTPServer
+    server = server_cls(("", port), DashboardHandler)
     db_status = "✓ SQLite connected" if _DB_AVAILABLE else "✗ SQLite unavailable"
     print(f"╔══════════════════════════════════════════════════════════╗")
     print(f"║  YouTube Automation Dashboard  →  http://localhost:{port}  ║")
@@ -1587,6 +1592,8 @@ def main() -> None:
     print(f"  /api/db/ypp       →  YPP progress")
     print(f"  /api/db/queue     →  topic queue")
     print(f"  /api/channels     →  YouTube channel management\n")
+    mode = "threaded" if use_threaded else "single-thread"
+    print(f"  Server mode       →  {mode}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
