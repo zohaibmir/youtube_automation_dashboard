@@ -10,6 +10,7 @@ can execute simultaneously without interfering with each other.
 """
 
 import glob
+import copy
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ import signal
 import shutil
 import subprocess
 import uuid
+from voice_config import normalize_language
 
 from audio_generator import generate_audio_segments
 from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR
@@ -288,10 +290,11 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
     _register_job(job_id, topic, os.getpid())
     logger.info("[job=%s] Pipeline starting: %s", job_id, topic)
-    effective_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
     vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
 
     try:
+        generated_segments = None
         # Step 1 — Script (use dashboard script if provided, else generate fresh)
         if script_text:
             logger.info("Using pre-written script from dashboard Script Writer")
@@ -314,6 +317,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 language=effective_language,
                 duration_hint=duration_hint,
             )
+            # Freeze AI-generated script body so later metadata edits never
+            # alter the narration/segment structure used for rendering.
+            generated_segments = copy.deepcopy(content.get("segments", []))
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -324,7 +330,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 if seo.get("description"): content["description"] = seo["description"]
                 if seo.get("tags"):        content["tags"]        = seo["tags"]
 
-        segments = content["segments"]
+        segments = generated_segments if generated_segments is not None else content["segments"]
 
         # Step 2 — Text-to-speech (into isolated audio dir)
         audio_files = generate_audio_segments(
@@ -470,9 +476,10 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
     thumb_out  = os.path.join(job_dir, "thumbnail.jpg")
 
     _register_job(job_id, topic, os.getpid())
-    effective_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
     vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
     try:
+        generated_segments = None
         # Step 1 — Script
         if script_text:
             _p("Converting your Script Writer script to pipeline format…")
@@ -495,6 +502,9 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 language=effective_language,
                 duration_hint=duration_hint,
             )
+            # Freeze AI-generated script body so later metadata edits never
+            # alter the narration/segment structure used for rendering.
+            generated_segments = copy.deepcopy(content.get("segments", []))
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -504,7 +514,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 if seo.get("description"): content["description"] = seo["description"]
                 if seo.get("tags"):        content["tags"]        = seo["tags"]
 
-        segments = content["segments"]
+        segments = generated_segments if generated_segments is not None else content["segments"]
 
         _p(f"Generating audio for {len(segments)} segments…")
         audio_files = generate_audio_segments(

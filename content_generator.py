@@ -10,6 +10,7 @@ import re
 import time
 
 import anthropic
+from voice_config import normalize_language
 
 from config import (
     ANTHROPIC_API_KEY,
@@ -34,20 +35,28 @@ _DEFAULT_PRICING = {"input": 3.00, "output": 15.00}
 def _duration_constraints(duration_hint: str | None) -> tuple[str, str]:
     hint = (duration_hint or "").strip().lower()
     if not hint:
-        return "", ""
+        return (
+            "Target runtime: 6-8 minutes detailed and engaging.",
+            "Aim for 10-13 segments with total narration around 900-1200 words.",
+        )
     if "3-4" in hint or "short" in hint:
         return (
             f"Target runtime: {duration_hint}.",
-            "Aim for roughly 6-8 segments and keep narration tight enough for about 3 to 4 minutes total.",
+            "Aim for 6-8 segments with total narration around 420-650 words.",
+        )
+    if "8-10" in hint:
+        return (
+            f"Target runtime: {duration_hint}.",
+            "Aim for 12-16 segments with total narration around 1200-1550 words.",
         )
     if "10-12" in hint or "long" in hint or "deep dive" in hint:
         return (
             f"Target runtime: {duration_hint}.",
-            "Aim for roughly 12-16 segments and enough substance for about 10 to 12 minutes total.",
+            "Aim for 14-18 segments with total narration around 1450-1900 words.",
         )
     return (
         f"Target runtime: {duration_hint}.",
-        "Aim for roughly 9-12 segments and enough substance for about 6 to 8 minutes total.",
+        "Aim for 10-13 segments with total narration around 900-1200 words.",
     )
 
 
@@ -146,7 +155,7 @@ def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6
 ---
 """
 
-    script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    script_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
     duration_line, duration_rule = _duration_constraints(duration_hint)
 
     prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
@@ -174,6 +183,7 @@ Return ONLY valid JSON:
 Min 10 segments. Hook = shocking fact or question.
 Use {script_language} naturally. Short sentences. Build suspense.
 {duration_rule}
+Treat duration as a hard target, not a suggestion.
 For visual_keyword: be specific and descriptive — e.g. 'ancient temple ruins sunset', 'crowded mosque prayer', 'jerusalem old city wall'. Avoid single generic words.
 For visual_keyword_fallback: use a simpler 1-2 word broad term in case the specific one has no results."""
 
@@ -207,7 +217,7 @@ def script_text_to_segments(script_text: str, topic: str, seo_override: dict | N
         Same dict shape as generate_script(): title, description, tags,
         thumbnail_text, thumbnail_subtext, segments.
     """
-    script_language = (language or CHANNEL_LANGUAGE or "english").strip() or "english"
+    script_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
     duration_line, duration_rule = _duration_constraints(duration_hint)
 
     prompt = f"""Convert this YouTube script into pipeline segments.
@@ -235,8 +245,9 @@ Return ONLY valid JSON — do not regenerate the script, keep the exact narratio
     }}
   ]
 }}
-Split into 8-12 segments of roughly equal length.
+Split into a segment count that matches the requested runtime target.
 {duration_rule}
+Treat duration as a hard target, not a suggestion.
 For visual_keyword: be specific — e.g. 'mosque interior golden dome', 'soldier battlefield smoke', 'bible open light rays'. Avoid single generic words.
 For visual_keyword_fallback: 1-2 word broad fallback if specific term has no results."""
 

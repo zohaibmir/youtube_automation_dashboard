@@ -38,6 +38,42 @@ LANGUAGE_VOICES = {
 }
 
 
+def normalize_language(language: str | None) -> str:
+    """Normalize user/env language strings to supported canonical values.
+
+    Supported return values: english, hindi, urdu, hinglish.
+    """
+    raw = (language or "").strip().lower()
+    if not raw:
+        return "english"
+
+    # Direct/common aliases first
+    aliases = {
+        "en": "english",
+        "eng": "english",
+        "english": "english",
+        "hi": "hindi",
+        "hindi": "hindi",
+        "ur": "urdu",
+        "urdu": "urdu",
+        "hinglish": "hinglish",
+    }
+    if raw in aliases:
+        return aliases[raw]
+
+    # Handle phrase-like values from settings, e.g. "English clear global neutral"
+    if "hinglish" in raw:
+        return "hinglish"
+    if "urdu" in raw:
+        return "urdu"
+    if "hindi" in raw:
+        return "hindi"
+    if "english" in raw:
+        return "english"
+
+    return "english"
+
+
 def get_voice_settings() -> dict:
     """Get ElevenLabs voice settings for TTS."""
     return {
@@ -158,7 +194,8 @@ def resolve_voice(language: str = "english",
         return global_voice
     
     # 4. Language default
-    voices = LANGUAGE_VOICES.get(language.lower(), {}).get("recommended", [])
+    language = normalize_language(language)
+    voices = LANGUAGE_VOICES.get(language, {}).get("recommended", [])
     if voices:
         return voices[0]["id"]
     

@@ -1163,6 +1163,17 @@ canvas{display:block;width:100%;height:auto}
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
     <div class="info-box" style="margin-bottom:10px">Define time ranges to extract clips. Each clip can be uploaded as a YouTube Short and/or social media Reel. Max 59s for Shorts, 90s for Reels.</div>
 
+    <div style="margin-bottom:10px;padding:10px;background:var(--bg3);border:1px dashed var(--border2);border-radius:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">Already generated reels/shorts</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Use videos from <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/shorts</code>, <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/clips</code>, and related folders, without re-extracting clips.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="studioLoadExistingReels()">&#128260; Load Existing Reels</button>
+        <button class="btn btn-sm" onclick="studioUseSelectedReels()">&#9989; Use Selected Reels</button>
+      </div>
+      <div id="stu-existing-reels-status" style="font-size:10px;color:var(--muted);margin-bottom:6px">Click "Load Existing Reels" to pick files.</div>
+      <div id="stu-existing-reels-list" style="max-height:180px;overflow:auto"></div>
+    </div>
+
     <div id="stu-clips-list" style="margin-bottom:10px">
       <!-- clip rows added dynamically -->
     </div>
@@ -5462,6 +5473,59 @@ var _studioInfo=null;
 var _studioClipPaths=[];
 var _studioClipCount=0;
 
+function _isLikelyReelVideo(v){
+  var p=((v&&v.path)||'').toLowerCase();
+  return p.indexOf('/shorts')!==-1 || p.indexOf('/clips')!==-1 || p.indexOf('shorts_animated')!==-1 || p.indexOf('smoke_shorts')!==-1;
+}
+
+function studioLoadExistingReels(){
+  var list=document.getElementById('stu-existing-reels-list');
+  var st=document.getElementById('stu-existing-reels-status');
+  if(!list||!st){return;}
+  var reels=(_studioVideos||[]).filter(_isLikelyReelVideo);
+  if(!reels.length){
+    list.innerHTML='';
+    st.textContent='No existing reels/shorts found yet.';
+    st.style.color='var(--amber)';
+    return;
+  }
+  st.textContent='Found '+reels.length+' reel/short file(s). Select and click "Use Selected Reels".';
+  st.style.color='var(--muted)';
+  list.innerHTML=reels.map(function(v,i){
+    return '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;cursor:pointer">'
+      +'<input type="checkbox" class="stu-existing-reel-cb" value="'+_escHtml(v.path)+'" style="margin-top:2px"'+(i<3?' checked':'')+'/>'
+      +'<span style="flex:1;min-width:0">'
+      +'<span style="display:block;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_escHtml(v.name)+'</span>'
+      +'<span style="display:block;color:var(--dim);font-size:10px">'+_escHtml((v.path||'').replace(/^.*\/output\//,'output/'))+' • '+v.size_mb+' MB</span>'
+      +'</span>'
+      +'</label>';
+  }).join('');
+}
+
+function studioUseSelectedReels(){
+  var st=document.getElementById('stu-existing-reels-status');
+  var picked=[];
+  document.querySelectorAll('.stu-existing-reel-cb:checked').forEach(function(cb){
+    var p=(cb.value||'').trim();
+    if(p) picked.push(p);
+  });
+  if(!picked.length){
+    if(st){st.textContent='Select at least one reel/short video.';st.style.color='var(--red)';}
+    return;
+  }
+  _studioClipPaths=picked;
+  var html='';
+  picked.forEach(function(p,idx){
+    var name=p.split('/').pop();
+    html+='<div style="padding:6px;margin-bottom:4px;background:var(--bg3);border-radius:6px;font-size:11px;display:flex;justify-content:space-between">';
+    html+='<span style="color:var(--green)">\u2713 existing-'+(idx+1)+': '+_escHtml(name)+'</span>';
+    html+='<span style="color:var(--dim)">ready</span></div>';
+  });
+  document.getElementById('stu-extracted-list').innerHTML=html;
+  document.getElementById('stu-extracted-section').style.display='block';
+  if(st){st.textContent='Using '+picked.length+' existing reel(s)/short(s).';st.style.color='var(--green)';}
+}
+
 function loadStudioVideos(){
   var sel=document.getElementById('stu-video-select');
   sel.innerHTML='<option value="">Loading\u2026</option>';
@@ -5474,6 +5538,8 @@ function loadStudioVideos(){
     sel.innerHTML=html;
     // Also populate channel dropdown
     _loadStudioChannels();
+    // Refresh existing reels picker if user is using that workflow
+    studioLoadExistingReels();
   }).catch(function(e){
     sel.innerHTML='<option value="">Error loading videos</option>';
     var st=document.getElementById('stu-upload-main-status');
