@@ -11,7 +11,13 @@ import time
 
 import schedule
 
-from config import SCHEDULER_CHANNEL, SCHEDULER_PUBLISH_TIME, SCHEDULER_PUBLISH_TIMES, VIDEOS_PER_WEEK
+from config import (
+    SCHEDULER_CHANNEL,
+    SCHEDULER_PUBLISH_TIME,
+    SCHEDULER_PUBLISH_TIMES,
+    SCHEDULER_SHORTS_COUNT,
+    VIDEOS_PER_WEEK,
+)
 from content_generator import generate_topic_ideas
 from pipeline import run
 from topic_queue import (
@@ -32,6 +38,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PUBLISH_TIME = "14:00"
 _REFILL_THRESHOLD = 5
 _CHANNEL_SLUG: str | None = None  # set by CLI --channel or env var
+
+
+def _scheduler_shorts_count() -> int:
+    """Return clamped scheduler shorts count (0-3)."""
+    try:
+        return max(0, min(3, int(SCHEDULER_SHORTS_COUNT)))
+    except Exception:
+        return 2
 
 
 def _resolve_publish_time() -> str:
@@ -103,9 +117,15 @@ def publish_next() -> None:
     if not topic:
         logger.warning("Queue empty — skipping this scheduled run")
         return
-    logger.info("Starting pipeline: %s (channel=%s)", topic, _CHANNEL_SLUG or "default")
+    shorts_count = _scheduler_shorts_count()
+    logger.info(
+        "Starting pipeline: %s (channel=%s, shorts=%d)",
+        topic,
+        _CHANNEL_SLUG or "default",
+        shorts_count,
+    )
     try:
-        run(topic, channel_slug=_CHANNEL_SLUG)
+        run(topic, channel_slug=_CHANNEL_SLUG, shorts_count=shorts_count)
         mark_topic_done(topic)
     except Exception as exc:
         logger.error("Pipeline failed: %s", exc)

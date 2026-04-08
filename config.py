@@ -24,6 +24,8 @@ VIDEOS_PER_WEEK: int = int(os.getenv("VIDEOS_PER_WEEK", "5"))
 SCHEDULER_PUBLISH_TIME: str = os.getenv("SCHEDULER_PUBLISH_TIME", "14:00")
 SCHEDULER_PUBLISH_TIMES: str = os.getenv("SCHEDULER_PUBLISH_TIMES", "")
 SCHEDULER_CHANNEL: str | None = os.getenv("SCHEDULER_CHANNEL", "").strip() or None
+# Shorts to generate for scheduler / run-next jobs (0-3)
+SCHEDULER_SHORTS_COUNT: int = int(os.getenv("SCHEDULER_SHORTS_COUNT", "2"))
 
 # ── File Paths ────────────────────────────────────────────────────────────────
 DB_PATH: str = os.getenv("DB_PATH", "yt_automation.db")

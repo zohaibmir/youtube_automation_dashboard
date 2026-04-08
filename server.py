@@ -535,7 +535,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """Dequeue the next pending topic and run the pipeline — same logic as the scheduler."""
         try:
             from topic_queue import dequeue_topic, mark_topic_done, mark_topic_failed, pending_count
-            from config import SCHEDULER_CHANNEL
+            from config import SCHEDULER_CHANNEL, SCHEDULER_SHORTS_COUNT
         except Exception as ex:
             self._json_response({"ok": False, "error": f"Import error: {ex}"}); return
 
@@ -549,14 +549,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Read optional channel override from request body
         channel_slug = None
+        shorts_count = None
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
                 body = json.loads(self.rfile.read(length))
                 channel_slug = body.get("channel_slug", "").strip() or None
+                if isinstance(body, dict) and body.get("shorts_count") is not None:
+                    shorts_count = int(body.get("shorts_count"))
         except Exception:
             pass
         channel_slug = channel_slug or SCHEDULER_CHANNEL or None
+        if shorts_count is None:
+            shorts_count = SCHEDULER_SHORTS_COUNT
+        try:
+            shorts_count = max(0, min(3, int(shorts_count)))
+        except Exception:
+            shorts_count = 2
 
         with _pipeline_lock:
             _pipeline_job.update({
@@ -568,7 +577,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         def _bg():
             try:
-                _run_pipeline_bg(topic, channel_slug=channel_slug)
+                _run_pipeline_bg(topic, channel_slug=channel_slug, shorts_count=shorts_count)
                 mark_topic_done(topic)
             except Exception as exc:
                 mark_topic_failed(topic)
@@ -577,7 +586,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
-        self._json_response({"ok": True, "topic": topic})
+        self._json_response({"ok": True, "topic": topic, "shorts_count": shorts_count})
 
     def _handle_pipeline_upload(self) -> None:
         if not _DB_AVAILABLE:
