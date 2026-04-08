@@ -23,9 +23,15 @@ def enqueue_topics(topics: list[str], topic_type: str = "AI-generated") -> int:
     Returns the number of rows inserted.
     """
     with _conn() as conn:
+        base_priority = conn.execute(
+            "SELECT COALESCE(MAX(priority), 0) FROM topic_queue WHERE status='pending'"
+        ).fetchone()[0]
+        rows = []
+        for idx, t in enumerate(topics, start=1):
+            rows.append((t, topic_type, int(base_priority) + idx))
         conn.executemany(
-            "INSERT INTO topic_queue (topic, type, status) VALUES (?, ?, 'pending')",
-            [(t, topic_type) for t in topics],
+            "INSERT INTO topic_queue (topic, type, status, priority) VALUES (?, ?, 'pending', ?)",
+            rows,
         )
         conn.commit()
         added = conn.total_changes
@@ -46,7 +52,7 @@ def dequeue_topic() -> str | None:
             row = conn.execute(
                 "SELECT id, topic FROM topic_queue "
                 "WHERE status='pending' AND retry_count < ? "
-                "ORDER BY id LIMIT 1",
+                "ORDER BY priority ASC, id ASC LIMIT 1",
                 (_MAX_RETRIES,),
             ).fetchone()
             if not row:
@@ -110,3 +116,60 @@ def pending_count() -> int:
             (_MAX_RETRIES,),
         ).fetchone()[0]
         return count
+
+
+def get_pending_topics(limit: int = 200) -> list[dict]:
+    """Return pending topics in dequeue order (top item runs next)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, topic, type, status, priority, added_at "
+            "FROM topic_queue "
+            "WHERE status='pending' AND retry_count < ? "
+            "ORDER BY priority ASC, id ASC LIMIT ?",
+            (_MAX_RETRIES, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def reorder_pending_topics(ordered_ids: list[int]) -> int:
+    """Persist a new priority order for pending queue items.
+
+    Args:
+        ordered_ids: Full ordered list of pending queue row IDs.
+
+    Returns:
+        Number of rows updated.
+    """
+    clean_ids = [int(i) for i in ordered_ids if str(i).isdigit()]
+    if not clean_ids:
+        return 0
+
+    with _conn() as conn:
+        conn.execute("BEGIN EXCLUSIVE")
+        try:
+            rows = conn.execute(
+                "SELECT id FROM topic_queue "
+                "WHERE status='pending' AND retry_count < ? "
+                "ORDER BY priority ASC, id ASC",
+                (_MAX_RETRIES,),
+            ).fetchall()
+            existing = [int(r["id"]) for r in rows]
+            existing_set = set(existing)
+
+            # Keep caller order for known IDs, then append any omitted IDs.
+            ordered = [i for i in clean_ids if i in existing_set]
+            ordered_set = set(ordered)
+            ordered.extend([i for i in existing if i not in ordered_set])
+
+            changed = 0
+            for priority, item_id in enumerate(ordered, start=1):
+                conn.execute(
+                    "UPDATE topic_queue SET priority=? WHERE id=?",
+                    (priority, item_id),
+                )
+                changed += 1
+            conn.commit()
+            return changed
+        except Exception:
+            conn.rollback()
+            raise

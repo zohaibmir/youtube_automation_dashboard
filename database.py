@@ -76,6 +76,7 @@ def init_db():
                 type        TEXT DEFAULT 'Planned',
                 scheduled   TEXT,
                 status      TEXT DEFAULT 'pending',
+                priority    INTEGER DEFAULT 0,
                 retry_count INTEGER DEFAULT 0,
                 added_at    TEXT DEFAULT (datetime('now'))
             );
@@ -96,6 +97,20 @@ def init_db():
             conn.execute("SELECT retry_count FROM topic_queue LIMIT 1")
         except sqlite3.OperationalError:
             conn.execute("ALTER TABLE topic_queue ADD COLUMN retry_count INTEGER DEFAULT 0")
+        # Add priority column if upgrading from older schema
+        try:
+            conn.execute("SELECT priority FROM topic_queue LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE topic_queue ADD COLUMN priority INTEGER DEFAULT 0")
+            # Backfill pending rows to FIFO priority order.
+            rows = conn.execute(
+                "SELECT id FROM topic_queue WHERE status='pending' ORDER BY id"
+            ).fetchall()
+            for idx, row in enumerate(rows, start=1):
+                conn.execute("UPDATE topic_queue SET priority=? WHERE id=?", (idx, row[0]))
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_topic_queue_priority ON topic_queue(status, priority, id)"
+        )
         conn.commit()
     print(f"DB ready: {DB_PATH}")
 

@@ -128,8 +128,9 @@ def _db_queue() -> list:
     try:
         conn = get_conn()
         rows = conn.execute(
-            "SELECT id, topic, type, scheduled, status, added_at "
-            "FROM topic_queue ORDER BY id DESC LIMIT 100"
+            "SELECT id, topic, type, scheduled, status, priority, added_at "
+            "FROM topic_queue ORDER BY "
+            "CASE WHEN status='pending' THEN 0 ELSE 1 END, priority ASC, id DESC LIMIT 200"
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -381,6 +382,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_social_platforms_get()
         elif path == "/api/branding/assets":
             self._handle_branding_assets_get()
+        elif path == "/api/queue/pending":
+            self._handle_queue_pending_get()
         elif path.startswith("/api/channel/audit"):
             self._handle_channel_audit()
         elif path == "/api/studio/videos":
@@ -458,6 +461,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_delete()
         elif path == "/api/community-post/generate":
             self._handle_community_post_generate()
+        elif path == "/api/queue/reorder":
+            self._handle_queue_reorder_post()
         else:
             self.send_response(404)
             self.end_headers()
@@ -650,6 +655,32 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             with _pipeline_lock:
                 _pipeline_job.update({"status": "failed", "message": str(exc), "error": str(exc)})
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_pending_get(self) -> None:
+        """GET /api/queue/pending — pending queue in run-next order."""
+        try:
+            from topic_queue import get_pending_topics
+            self._json_response({"ok": True, "items": get_pending_topics(limit=300)})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_reorder_post(self) -> None:
+        """POST /api/queue/reorder — persist pending queue order.
+
+        Body: {ordered_ids: [12, 8, 5, ...]}
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            ordered_ids = data.get("ordered_ids") if isinstance(data, dict) else None
+            if not isinstance(ordered_ids, list) or not ordered_ids:
+                self._json_response({"ok": False, "error": "ordered_ids list is required"})
+                return
+            from topic_queue import reorder_pending_topics
+            changed = reorder_pending_topics(ordered_ids)
+            self._json_response({"ok": True, "updated": changed})
+        except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
 
     def _handle_pipeline_kill(self, path: str = "/api/pipeline/kill") -> None:
