@@ -26,6 +26,8 @@ SCHEDULER_PUBLISH_TIMES: str = os.getenv("SCHEDULER_PUBLISH_TIMES", "")
 SCHEDULER_CHANNEL: str | None = os.getenv("SCHEDULER_CHANNEL", "").strip() or None
 # Shorts to generate for scheduler / run-next jobs (0-3)
 SCHEDULER_SHORTS_COUNT: int = int(os.getenv("SCHEDULER_SHORTS_COUNT", "2"))
+# Encoder thread cap for MoviePy/FFmpeg in constrained hosts (e.g., Railway)
+FFMPEG_THREADS: int = max(1, int(os.getenv("FFMPEG_THREADS", "2")))
 
 # ── File Paths ────────────────────────────────────────────────────────────────
 DB_PATH: str = os.getenv("DB_PATH", "yt_automation.db")

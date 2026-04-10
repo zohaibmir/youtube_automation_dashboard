@@ -19,7 +19,7 @@ from moviepy.editor import (
     concatenate_videoclips,
 )
 
-from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, OUTPUT_DIR
+from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, FFMPEG_THREADS, OUTPUT_DIR
 from core.text_renderer import render_caption_overlay, slugify as _slugify
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _FPS = 24          # 24 is plenty for Shorts (saves ~20% encode time vs 30)
 _WIDTH = 1080
 _HEIGHT = 1920
-_THREADS = os.cpu_count() or 4
+_THREADS = FFMPEG_THREADS
 _MAX_DURATION = 59  # YT Shorts limit
 _CAPTION_FONT_SIZE = 60
 _CAPTION_STROKE = 3

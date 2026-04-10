@@ -28,6 +28,7 @@ from config import (
     CHANNEL_NAME,
     CROSSFADE_DURATION,
     END_SCREEN_DURATION,
+    FFMPEG_THREADS,
     INTRO_DURATION,
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 _FPS = 24
 _VIDEO_WIDTH = 1920
 _VIDEO_HEIGHT = 1080
-_THREADS = os.cpu_count() or 4
+_THREADS = FFMPEG_THREADS
 
 
 def _resolve_channel_name() -> str:
@@ -105,6 +106,7 @@ def _ffmpeg_prepare_video(src_path: str, duration: float) -> str:
         "-stream_loop", "-1",          # loop source if shorter than duration
         "-i", str(src),
         "-t", str(duration),
+        "-threads", "1",
         "-vf", (
             f"scale={_VIDEO_WIDTH}:{_VIDEO_HEIGHT}"
             f":force_original_aspect_ratio=increase,"
