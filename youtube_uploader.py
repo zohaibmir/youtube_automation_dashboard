@@ -25,7 +25,11 @@ _UPLOAD_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 logger = logging.getLogger(__name__)
 
 _BASE_DIR = os.path.dirname(__file__)
-_TOKENS_DIR = os.getenv("YOUTUBE_TOKENS_DIR", os.path.join(_BASE_DIR, "tokens"))
+_PERSISTENT_TOKENS_DIR = "/data/tokens"
+_TOKENS_DIR = os.getenv(
+    "YOUTUBE_TOKENS_DIR",
+    _PERSISTENT_TOKENS_DIR if os.path.isdir("/data") else os.path.join(_BASE_DIR, "tokens")
+)
 _LEGACY_TOKEN = os.path.join(_BASE_DIR, "token.json")
 _CHANNELS_FILE = os.path.join(_TOKENS_DIR, "channels.json")
 
