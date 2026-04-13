@@ -350,6 +350,17 @@ canvas{display:block;width:100%;height:auto}
       <button class="btn btn-ghost btn-sm" onclick="getTrending('global',this)">&#127760; Global</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <label for="trend-recency" style="font-size:12px;color:var(--muted);white-space:nowrap">&#128197; Topic recency</label>
+      <select id="trend-recency" onchange="_persistDraftContext()" style="min-width:180px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);outline:none">
+        <option value="today" selected>Today / last 24 hours</option>
+        <option value="48h">Last 48 hours</option>
+        <option value="week">Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="any">Any recent viral window</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted)">Use this to force fresher web-search results for Trending and Viral ideas.</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
       <span style="font-size:12px;color:var(--muted);white-space:nowrap">&#9997;&#65039; Your title / topic:</span>
       <input id="custom-topic-input" type="text" placeholder="e.g. Why Pakistan economy is struggling in 2026" style="flex:1;min-width:220px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);outline:none" onkeydown="if(event.key==='Enter')getCustomTrending()">
       <button class="btn btn-ghost btn-sm" id="custom-trend-btn" onclick="getCustomTrending()">&#128269; Get Ideas</button>
@@ -3020,6 +3031,7 @@ function _persistDraftContext(){
   var draft={
     selectedChannelSlug:selectedChannelSlug||'',
     selectedChannelLanguage:selectedChannelLanguage||'english',
+    trendRecency:(document.getElementById('trend-recency')||{}).value||'today',
     trendData:Array.isArray(trendData)?trendData:[],
     trendCtxHtml:(document.getElementById('trend-ctx')||{}).innerHTML||'',
     seoAutoContext:_seoAutoContext||{script:'',topic:''},
@@ -3036,6 +3048,10 @@ function _persistDraftContext(){
 
 function _restoreDraftContext(draft){
   if(!draft||typeof draft!=='object')return;
+  if(draft.trendRecency){
+    var recencyEl=document.getElementById('trend-recency');
+    if(recencyEl)recencyEl.value=draft.trendRecency;
+  }
   if(draft.language){
     var langEl=document.getElementById('cfg-lang');
     if(langEl)langEl.value=draft.language;
@@ -3075,6 +3091,20 @@ var trendData=[];
 var _trendActiveBtn=null;
 var selectedChannelSlug=''; // Track which channel is being used for this session
 var selectedChannelLanguage='english'; // Display language for that channel
+
+function getTrendRecency(){
+  var el=document.getElementById('trend-recency');
+  return (el&&el.value)||'today';
+}
+
+function getTrendRecencyMeta(){
+  var recency=getTrendRecency();
+  if(recency==='48h')return {label:'last 48 hours', searchSuffix:'past 48 hours latest', promptHint:'Focus heavily on the last 48 hours.'};
+  if(recency==='week')return {label:'last 7 days', searchSuffix:'past week latest', promptHint:'Focus on events from the last 7 days only unless absolutely necessary.'};
+  if(recency==='month')return {label:'last 30 days', searchSuffix:'past month recent', promptHint:'Prefer events from the last 30 days, weighted toward the newest developments.'};
+  if(recency==='any')return {label:'recent viral window', searchSuffix:'recent latest trending', promptHint:'Prioritize the freshest high-interest items you can find.'};
+  return {label:'today / last 24 hours', searchSuffix:'today last 24 hours latest', promptHint:'Focus on today and the last 24 hours first.'};
+}
 
 function setSelectedChannel(slug) {
   selectedChannelSlug = slug;
@@ -3117,10 +3147,11 @@ async function getTrending(filter,btnEl){
   }
 
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var recencyMeta=getTrendRecencyMeta();
   var searchQuery, fn, typeHint;
   if(filter==='viral'){
     fn='Viral, high-shock, emotionally charged topics — maximum click-through for global audience.';
-    searchQuery='viral YouTube trending topics politics religion world news March 2026';
+    searchQuery='viral YouTube trending topics politics religion world news '+recencyMeta.searchSuffix;
     typeHint='Viral';
   }else if(filter==='evergreen'){
     fn='Evergreen long-tail topics that get consistent search traffic year-round.';
@@ -3128,25 +3159,26 @@ async function getTrending(filter,btnEl){
     typeHint='Evergreen';
   }else if(filter==='news'){
     fn='Breaking news and current events this week — global politics, religion, geopolitics.';
-    searchQuery='latest world news politics religion geopolitics March 2026 trending';
+    searchQuery='latest world news politics religion geopolitics '+recencyMeta.searchSuffix;
     typeHint='News';
   }else if(filter==='politics'){
     fn='Politics, geopolitics, elections, wars, world leaders — high-engagement global controversies.';
-    searchQuery='world politics geopolitics elections war trending YouTube March 2026';
+    searchQuery='world politics geopolitics elections war trending YouTube '+recencyMeta.searchSuffix;
     typeHint='Politics';
   }else if(filter==='global'){
     fn='Global trending events — wars, economy, religion, AI, world leaders — that worldwide audience is watching.';
-    searchQuery='global news world events trending viral politics religion March 2026';
+    searchQuery='global news world events trending viral politics religion '+recencyMeta.searchSuffix;
     typeHint='Global';
   }else{
     fn='Most watched topics on YouTube right now globally — politics, religion, current affairs.';
-    searchQuery='trending YouTube worldwide politics religion viral March 2026';
+    searchQuery='trending YouTube worldwide politics religion viral '+recencyMeta.searchSuffix;
     typeHint='Trending';
   }
 
   var prompt=
     'TODAY is '+today+'. You MUST use the web_search tool. Do NOT use training data.\'s '
     +'Search RIGHT NOW for: "'+searchQuery+'"\n'
+    +'Time filter: '+recencyMeta.label+'. '+recencyMeta.promptHint+'\n'
     +'Then generate 8 YouTube video ideas for a '+getNiche()+' channel.\n'
     +'Audience: '+getAud()+'. Language: '+getLang()+'.\n'
     +'Focus: '+fn+'\n'
@@ -3169,7 +3201,7 @@ async function getTrending(filter,btnEl){
   try{
     trendData=parseJSON(raw,'[');
     var ctx=document.getElementById('trend-ctx');
-    ctx.innerHTML='<strong>&#128269; Web search used — '+filter.toUpperCase()+'</strong> &mdash; results grounded in real search data as of '+today+'.';
+    ctx.innerHTML='<strong>&#128269; Web search used — '+filter.toUpperCase()+'</strong> &mdash; recency: <strong>'+recencyMeta.label+'</strong> &mdash; results grounded in real search data as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
     _persistDraftContext();
@@ -3186,10 +3218,12 @@ async function getCustomTrending(){
   btn.innerHTML='<span class="spinner"></span> Searching...';
 
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var recencyMeta=getTrendRecencyMeta();
   var prompt=
     'TODAY is '+today+'. You MUST use the web_search tool. Do NOT use training data.\n'
     +'The user wants to make a YouTube video about: "'+customTitle+'"\n'
-    +'Search RIGHT NOW for: "'+customTitle+' 2026 YouTube"\n'
+    +'Search RIGHT NOW for: "'+customTitle+' '+recencyMeta.searchSuffix+' YouTube"\n'
+    +'Time filter: '+recencyMeta.label+'. '+recencyMeta.promptHint+'\n'
     +'Then generate 8 YouTube video title & content ideas for a '+getNiche()+' channel, all based on or inspired by this topic.\n'
     +'Audience: '+getAud()+'. Language: '+getLang()+'.\n'
     +'Include the user\'s exact title as idea #1, then generate 7 compelling variations.\n'
@@ -3207,7 +3241,7 @@ async function getCustomTrending(){
   try{
     trendData=parseJSON(raw,'[');
     var ctx=document.getElementById('trend-ctx');
-    ctx.innerHTML='<strong>&#9997;&#65039; Custom topic: &ldquo;'+esc(customTitle)+'&rdquo;</strong> &mdash; 8 ideas generated via live web search as of '+today+'.';
+    ctx.innerHTML='<strong>&#9997;&#65039; Custom topic: &ldquo;'+esc(customTitle)+'&rdquo;</strong> &mdash; recency: <strong>'+recencyMeta.label+'</strong> &mdash; 8 ideas generated via live web search as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
     _persistDraftContext();
