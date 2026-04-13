@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: youtube-automation
+    runtime: docker
+    plan: starter  # $7/mo - 512MB RAM, no thread limits
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    startCommand: python server.py
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: DB_PATH
+        value: /data/yt_automation.db
+      - key: AUDIO_DIR
+        value: /data/audio
+      - key: IMAGES_DIR
+        value: /data/images
+      - key: OUTPUT_DIR
+        value: /data/output
+      - key: FFMPEG_THREADS
+        value: 4  # Can use real parallelism on Render
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+    disk:
+      name: youtube-data
+      mountPath: /data
+      sizeGB: 10

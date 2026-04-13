@@ -1614,10 +1614,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    # Railway can hit tight thread limits under aggressive polling; default to
-    # single-threaded HTTP in hosted environments unless explicitly overridden.
-    hosted = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
-    use_threaded = os.environ.get("SERVER_THREADED", "0" if hosted else "1") == "1"
+    use_threaded = os.environ.get("SERVER_THREADED", "1") == "1"
     server_cls = ThreadingHTTPServer if use_threaded else HTTPServer
     server = server_cls(("", port), DashboardHandler)
     db_status = "✓ SQLite connected" if _DB_AVAILABLE else "✗ SQLite unavailable"

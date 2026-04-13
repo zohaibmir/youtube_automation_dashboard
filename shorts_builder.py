@@ -183,6 +183,8 @@ def _build_one_short(
     # Import HW encoder settings from video_builder (detected once at startup)
     from video_builder import _HW_CODEC, _HW_PARAMS
     logger.info("Encoding Short with %s (threads=%d)", _HW_CODEC, _THREADS)
+    # Use temp_audiofile to avoid real-time audio piping (which spawns threads)
+    temp_audiofile = f"{output_path}.temp_audio.m4a"
     final.write_videofile(
         output_path,
         fps=_FPS,
@@ -190,6 +192,9 @@ def _build_one_short(
         audio_codec="aac",
         threads=_THREADS,
         ffmpeg_params=_HW_PARAMS,
+        temp_audiofile=temp_audiofile,
+        remove_temp=True,
+        write_logfile=False,
         logger=None,
     )
     logger.info("Short written to %s (%.1fs)", output_path, final.duration)

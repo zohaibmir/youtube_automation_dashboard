@@ -81,6 +81,7 @@ def _detect_hw_encoder() -> tuple[str, list[str]]:
     extra encode time. CRF 23 is libx264's default — still excellent
     quality for YouTube (which re-encodes everything on ingest anyway).
     Targets ~6–8 Mbps for 1080p, matching YouTube's own upload guidelines.
+    
     """
     return "libx264", ["-preset", "fast", "-crf", "23"]
 
@@ -106,7 +107,6 @@ def _ffmpeg_prepare_video(src_path: str, duration: float) -> str:
         "-stream_loop", "-1",          # loop source if shorter than duration
         "-i", str(src),
         "-t", str(duration),
-        "-threads", "1",
         "-vf", (
             f"scale={_VIDEO_WIDTH}:{_VIDEO_HEIGHT}"
             f":force_original_aspect_ratio=increase,"
@@ -488,6 +488,8 @@ def build_video(
             final = final.set_audio(music)
 
     logger.info("Encoding with %s (threads=%d)", _HW_CODEC, _THREADS)
+    # Use temp_audiofile to avoid real-time audio piping (which spawns threads)
+    temp_audiofile = f"{output_path}.temp_audio.m4a"
     final.write_videofile(
         output_path,
         fps=_FPS,
@@ -495,6 +497,9 @@ def build_video(
         audio_codec="aac",
         threads=_THREADS,
         ffmpeg_params=_HW_PARAMS,
+        temp_audiofile=temp_audiofile,
+        remove_temp=True,
+        write_logfile=False,
         logger=None,
     )
     logger.info("Video written to %s", output_path)
