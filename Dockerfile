@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY *.html ./
 COPY core ./core
-COPY branding ./branding
 
 # Create persistent directories (mounted as volumes)
 RUN mkdir -p audio images output data branding
