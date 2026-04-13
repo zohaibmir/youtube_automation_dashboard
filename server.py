@@ -463,6 +463,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_community_post_generate()
         elif path == "/api/queue/reorder":
             self._handle_queue_reorder_post()
+        elif path == "/api/queue/replace":
+            self._handle_queue_replace_post()
         else:
             self.send_response(404)
             self.end_headers()
@@ -689,6 +691,49 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             from topic_queue import reorder_pending_topics
             changed = reorder_pending_topics(ordered_ids)
             self._json_response({"ok": True, "updated": changed})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_replace_post(self) -> None:
+        """POST /api/queue/replace — clear queue and seed new topics.
+
+        Body:
+          {
+            "topics": ["...", "..."],
+            "clear_existing": true,
+            "topic_type": "AI-generated"
+          }
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            topics = data.get("topics") if isinstance(data, dict) else None
+            clear_existing = bool(data.get("clear_existing", True)) if isinstance(data, dict) else True
+            topic_type = (data.get("topic_type") or "AI-generated").strip() if isinstance(data, dict) else "AI-generated"
+
+            if not isinstance(topics, list) or not topics:
+                self._json_response({"ok": False, "error": "topics list is required"})
+                return
+
+            clean_topics = [str(t).strip() for t in topics if str(t).strip()]
+            if not clean_topics:
+                self._json_response({"ok": False, "error": "no valid topics provided"})
+                return
+
+            if clear_existing:
+                from database import _conn
+                with _conn() as conn:
+                    conn.execute("DELETE FROM topic_queue")
+                    conn.commit()
+
+            from topic_queue import enqueue_topics, pending_count
+            added = enqueue_topics(clean_topics, topic_type=topic_type)
+            self._json_response({
+                "ok": True,
+                "added": added,
+                "pending": pending_count(),
+                "cleared": clear_existing,
+            })
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
 
