@@ -8,6 +8,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _is_hosted_environment() -> bool:
+    return bool(
+        os.getenv("RENDER")
+        or os.getenv("RENDER_SERVICE_ID")
+        or os.getenv("RENDER_EXTERNAL_URL")
+    )
+
+
+def _storage_root() -> str:
+    configured_root = os.getenv("DATA_ROOT", "").strip()
+    if configured_root:
+        return configured_root
+    if _is_hosted_environment() and os.path.isdir("/data"):
+        return "/data"
+    return ""
+
+
+def _resolve_storage_path(env_name: str, default_name: str) -> str:
+    configured = os.getenv(env_name, "").strip()
+    if configured:
+        candidate = configured
+    else:
+        root = _storage_root()
+        candidate = os.path.join(root, default_name) if root else default_name
+
+    if _is_hosted_environment() and (candidate == "/app" or candidate.startswith("/app/")):
+        root = _storage_root() or "/tmp"
+        suffix = candidate.removeprefix("/app/").strip()
+        candidate = os.path.join(root, suffix) if suffix else root
+
+    return os.path.normpath(candidate)
+
 # ── API Keys ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
@@ -30,10 +63,10 @@ SCHEDULER_SHORTS_COUNT: int = int(os.getenv("SCHEDULER_SHORTS_COUNT", "2"))
 FFMPEG_THREADS: int = max(1, int(os.getenv("FFMPEG_THREADS", "4")))
 
 # ── File Paths ────────────────────────────────────────────────────────────────
-DB_PATH: str = os.getenv("DB_PATH", "yt_automation.db")
-AUDIO_DIR: str = os.getenv("AUDIO_DIR", "audio")
-IMAGES_DIR: str = os.getenv("IMAGES_DIR", "images")
-OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "output")
+DB_PATH: str = _resolve_storage_path("DB_PATH", "yt_automation.db")
+AUDIO_DIR: str = _resolve_storage_path("AUDIO_DIR", "audio")
+IMAGES_DIR: str = _resolve_storage_path("IMAGES_DIR", "images")
+OUTPUT_DIR: str = _resolve_storage_path("OUTPUT_DIR", "output")
 
 # ── YouTube Publish Settings ─────────────────────────────────────────────────
 # Exported by the HTML dashboard → Settings → Export .env file
