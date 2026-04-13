@@ -23,8 +23,8 @@ COPY core ./core
 RUN mkdir -p audio images output data branding
 
 # ── Runtime ───────────────────────────────────────────────────
-# Default: run dashboard server. Override per-platform or per-service with START_CMD.
-CMD ["sh", "-lc", "${START_CMD:-python server.py}"]
+# Run dashboard server.
+CMD ["python", "server.py"]
 
 # ── Build & run ───────────────────────────────────────────────
 # docker build -t yt-automation .

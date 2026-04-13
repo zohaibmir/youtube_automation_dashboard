@@ -3,6 +3,7 @@ SQLite database layer for YouTube automation.
 Tracks: video history, API costs, performance metrics.
 Zero config — creates yt_automation.db automatically.
 """
+import os
 import sqlite3
 import json
 from contextlib import contextmanager
@@ -14,6 +15,9 @@ from config import DB_PATH
 @contextmanager
 def _conn():
     """Context manager that auto-closes the connection even if an exception occurs."""
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -24,6 +28,9 @@ def _conn():
 
 def get_conn():
     """Legacy helper — prefer using `with _conn() as conn:` instead."""
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
