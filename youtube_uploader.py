@@ -43,9 +43,59 @@ def _ensure_tokens_dir() -> None:
 def _load_channels() -> dict:
     """Load the channel registry. Returns {slug: {name, token_file, channel_id, is_default}}."""
     if os.path.exists(_CHANNELS_FILE):
-        with open(_CHANNELS_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(_CHANNELS_FILE, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            logger.warning("Invalid channels registry format in %s; expected object", _CHANNELS_FILE)
+        except Exception as e:
+            logger.warning("Failed to read channels registry %s: %s", _CHANNELS_FILE, e)
     return {}
+
+
+def _recover_channels_from_token_files() -> dict:
+    """Best-effort recovery when channels.json is missing/corrupt.
+
+    Rebuild channel entries from token JSON files already present in the tokens dir.
+    """
+    _ensure_tokens_dir()
+    recovered: dict = {}
+    try:
+        files = sorted(
+            f for f in os.listdir(_TOKENS_DIR)
+            if f.endswith(".json") and f != "channels.json"
+        )
+    except Exception as e:
+        logger.warning("Could not scan token directory %s: %s", _TOKENS_DIR, e)
+        return {}
+
+    for idx, token_file in enumerate(files):
+        slug = token_file[:-5].strip() or f"channel-{idx + 1}"
+        # Preserve slug as-is except for safety fallback.
+        safe_slug = "".join(c for c in slug if c.isalnum() or c == "-").strip("-") or f"channel-{idx + 1}"
+        if safe_slug in recovered:
+            suffix = 2
+            base = safe_slug
+            while f"{base}-{suffix}" in recovered:
+                suffix += 1
+            safe_slug = f"{base}-{suffix}"
+
+        recovered[safe_slug] = {
+            "name": safe_slug.replace("-", " ").title(),
+            "token_file": token_file,
+            "channel_id": "",
+            "is_default": idx == 0,
+        }
+
+    if recovered:
+        logger.warning(
+            "Recovered %d channel(s) from token files in %s",
+            len(recovered),
+            _TOKENS_DIR,
+        )
+        _save_channels(recovered)
+    return recovered
 
 
 def _save_channels(channels: dict) -> None:
@@ -100,6 +150,8 @@ def list_channels() -> list[dict]:
     """Return all registered channels as a list of dicts."""
     _migrate_legacy_token()
     channels = _load_channels()
+    if not channels:
+        channels = _recover_channels_from_token_files()
     result = []
     for slug, info in channels.items():
         token_file = info.get("token_file")
