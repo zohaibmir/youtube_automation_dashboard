@@ -4,6 +4,7 @@ Single responsibility: authenticate and upload a video + thumbnail
 to YouTube. Supports multiple channels via named token files in tokens/.
 """
 
+import base64
 import json
 import logging
 import os
@@ -40,8 +41,52 @@ def _ensure_tokens_dir() -> None:
     os.makedirs(_TOKENS_DIR, exist_ok=True)
 
 
+def _restore_tokens_from_env() -> bool:
+    """Restore token files from environment variables on hosted deployments.
+
+    Reads YOUTUBE_CHANNELS_REGISTRY (base64-encoded channels.json) and
+    YOUTUBE_TOKEN_<SLUG> (base64-encoded token JSON) env vars and writes
+    the corresponding files to _TOKENS_DIR if they are missing.
+    This lets tokens survive redeploys without a persistent disk.
+    Returns True if any files were restored.
+    """
+    restored = False
+
+    registry_b64 = os.getenv("YOUTUBE_CHANNELS_REGISTRY", "").strip()
+    if registry_b64 and not os.path.exists(_CHANNELS_FILE):
+        try:
+            _ensure_tokens_dir()
+            data = base64.b64decode(registry_b64).decode("utf-8")
+            channels = json.loads(data)
+            with open(_CHANNELS_FILE, "w") as f:
+                json.dump(channels, f, indent=2)
+            logger.info("Restored channels.json from YOUTUBE_CHANNELS_REGISTRY env var")
+            restored = True
+        except Exception as e:
+            logger.warning("Failed to restore channels.json from env: %s", e)
+
+    for key, value in os.environ.items():
+        if not key.startswith("YOUTUBE_TOKEN_") or not value.strip():
+            continue
+        slug = key[len("YOUTUBE_TOKEN_"):].lower().replace("_", "-")
+        token_path = os.path.join(_TOKENS_DIR, f"{slug}.json")
+        if not os.path.exists(token_path):
+            try:
+                _ensure_tokens_dir()
+                token_data = base64.b64decode(value.strip()).decode("utf-8")
+                with open(token_path, "w") as f:
+                    f.write(token_data)
+                logger.info("Restored token %s from env var %s", slug, key)
+                restored = True
+            except Exception as e:
+                logger.warning("Failed to restore token %s from env: %s", key, e)
+
+    return restored
+
+
 def _load_channels() -> dict:
     """Load the channel registry. Returns {slug: {name, token_file, channel_id, is_default}}."""
+    _restore_tokens_from_env()
     if os.path.exists(_CHANNELS_FILE):
         try:
             with open(_CHANNELS_FILE, "r") as f:

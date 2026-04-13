@@ -374,6 +374,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channel_oauth_callback()
         elif path == "/api/youtube/oauth-diagnostics":
             self._handle_youtube_oauth_diagnostics()
+        elif path == "/api/channels/export-tokens":
+            self._handle_channels_export_tokens()
         elif path == "/api/voices/samples":
             self._handle_voices_samples()
         elif path.startswith("/api/channels/") and path.endswith("/voice"):
@@ -431,6 +433,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_music_upload()
         elif path == "/api/channels/add":
             self._handle_channel_add()
+        elif path == "/api/channels/import-tokens":
+            self._handle_channels_import_tokens()
         elif path == "/api/channels/default":
             self._handle_channel_set_default()
         elif path.startswith("/api/channels/") and path.endswith("/voice"):
@@ -954,6 +958,55 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         diagnostics["tips"] = tips
         self._json_response(diagnostics)
+
+    def _handle_channels_export_tokens(self) -> None:
+        """GET /api/channels/export-tokens — Export all tokens as base64 env var values.
+
+        Returns a dict of env var names → base64 values ready to paste into Render.
+        """
+        if not self._is_request_allowed(require_localhost=False): return
+        import base64
+        from youtube_uploader import _TOKENS_DIR, _CHANNELS_FILE
+        result: dict = {}
+        try:
+            if os.path.exists(_CHANNELS_FILE):
+                with open(_CHANNELS_FILE, "rb") as f:
+                    result["YOUTUBE_CHANNELS_REGISTRY"] = base64.b64encode(f.read()).decode()
+            files = [fn for fn in os.listdir(_TOKENS_DIR) if fn.endswith(".json") and fn != "channels.json"] if os.path.isdir(_TOKENS_DIR) else []
+            for fn in files:
+                slug = fn[:-5].upper().replace("-", "_")
+                with open(os.path.join(_TOKENS_DIR, fn), "rb") as f:
+                    result[f"YOUTUBE_TOKEN_{slug}"] = base64.b64encode(f.read()).decode()
+            self._json_response({"ok": True, "env_vars": result})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_channels_import_tokens(self) -> None:
+        """POST /api/channels/import-tokens — Write token files from base64 payload.
+
+        Body: {"channels_b64": "...", "tokens": {"slug": "base64_content", ...}}
+        """
+        if not self._is_request_allowed(require_localhost=False): return
+        import base64
+        from youtube_uploader import _TOKENS_DIR, _CHANNELS_FILE, _ensure_tokens_dir
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            _ensure_tokens_dir()
+            written = []
+            channels_b64 = data.get("channels_b64", "").strip()
+            if channels_b64:
+                with open(_CHANNELS_FILE, "wb") as f:
+                    f.write(base64.b64decode(channels_b64))
+                written.append("channels.json")
+            for slug, token_b64 in (data.get("tokens") or {}).items():
+                token_path = os.path.join(_TOKENS_DIR, f"{slug}.json")
+                with open(token_path, "wb") as f:
+                    f.write(base64.b64decode(token_b64.strip()))
+                written.append(f"{slug}.json")
+            self._json_response({"ok": True, "written": written})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
 
     def _handle_channel_add(self) -> None:
         """POST /api/channels/add — Run OAuth flow to add a YouTube channel."""
