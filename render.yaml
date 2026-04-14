@@ -33,3 +33,20 @@ services:
       name: youtube-data
       mountPath: /data
       sizeGB: 10
+
+  # Cron job: Run scheduler twice daily (10:00 UTC and 18:00 UTC)
+  # Triggers the web service API which has access to the persistent disk
+  - type: cron
+    name: youtube-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    schedule: "0 10,18 * * *"  # 10am and 6pm UTC daily
+    startCommand: python run_scheduler_once.py
+    envVars:
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        value: https://youtube-automation-19fr.onrender.com
