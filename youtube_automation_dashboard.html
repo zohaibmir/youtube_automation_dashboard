@@ -3092,6 +3092,28 @@ var _trendActiveBtn=null;
 var selectedChannelSlug=''; // Track which channel is being used for this session
 var selectedChannelLanguage='english'; // Display language for that channel
 
+function _getDefaultConnectedChannelSlug(){
+  if(!_ytChannels||!_ytChannels.length)return '';
+  var def=_ytChannels.find(function(c){return c.is_default&&c.has_token;});
+  if(def)return def.slug;
+  var any=_ytChannels.find(function(c){return c.has_token;});
+  return any?any.slug:'';
+}
+
+function _resolveValidChannelSlug(preferredSlug, requireToken){
+  var slug=preferredSlug||'';
+  var matcher=function(c){
+    return c.slug===slug&&(!requireToken||c.has_token);
+  };
+  if(slug&&_ytChannels&&_ytChannels.some(matcher))return slug;
+  slug=selectedChannelSlug||'';
+  matcher=function(c){
+    return c.slug===slug&&(!requireToken||c.has_token);
+  };
+  if(slug&&_ytChannels&&_ytChannels.some(matcher))return slug;
+  return requireToken?_getDefaultConnectedChannelSlug():'';
+}
+
 function getTrendRecency(){
   var el=document.getElementById('trend-recency');
   return (el&&el.value)||'today';
@@ -3616,7 +3638,7 @@ function renderSchedulerQueuePriority(){
     row.className='qp-item';
     row.setAttribute('draggable','true');
     row.dataset.id=String(item.id);
-    row.innerHTML='<span class="qp-handle">☰</span><span class="qp-rank">#'+(idx+1)+'</span><span class="qp-title">'+esc(item.topic||'')+'</span>';
+    row.innerHTML='<span class="qp-handle">☰</span><span class="qp-rank">#'+(idx+1)+'</span><span class="qp-title">'+esc(item.topic||'')+'</span><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSchedulerQueueItem('+item.id+')" style="padding:3px 7px;margin-left:auto" title="Delete">&#10005;</button>';
     row.addEventListener('dragstart', function(){
       _schedDragId=String(item.id);
     });
@@ -3657,6 +3679,22 @@ function saveSchedulerQueuePriority(){
   }).catch(function(err){
     if(statusEl){statusEl.textContent='Save failed: '+(err.message||err);}
   });
+}
+
+function deleteSchedulerQueueItem(topicId){
+  if(!confirm('Delete this topic from the queue?')){return;}
+  var statusEl=document.getElementById('queue-priority-status');
+  if(statusEl){statusEl.textContent='Deleting…';}
+  fetchJsonSafe('/api/queue/delete/'+topicId,{method:'DELETE'})
+    .then(function(d){
+      if(!d||!d.ok){throw new Error((d&&d.error)||'delete failed');}
+      _schedPending=_schedPending.filter(function(x){return x.id!==topicId;});
+      renderSchedulerQueuePriority();
+      if(statusEl){statusEl.textContent='Topic deleted. ('+_schedPending.length+' remaining)';}
+    })
+    .catch(function(err){
+      if(statusEl){statusEl.textContent='Delete failed: '+(err.message||err);}
+    });
 }
 
 function exportCSV(){
@@ -3817,7 +3855,11 @@ function saveThumbToQueue(){
 
 function uploadQueueItem(id){
   var item=queue.find(function(q){return q.id===id;});if(!item)return;
-  var targetSlug=item.channel_slug||selectedChannelSlug||'';
+  var targetSlug=_resolveValidChannelSlug(item.channel_slug||selectedChannelSlug||'', true);
+  if(targetSlug&&item.channel_slug!==targetSlug){
+    item.channel_slug=targetSlug;
+    saveQ();
+  }
   var hasYouTubeToken = window.ytToken || (_ytChannels && _ytChannels.some(function(c){
     if(targetSlug){return c.slug===targetSlug&&c.has_token;}
     return c.is_default&&c.has_token;
@@ -4939,6 +4981,13 @@ function populateChannelDropdown() {
     }
     healthSel.value = prev;
   }
+
+  var resolvedSelectedSlug=_resolveValidChannelSlug(selectedChannelSlug, false);
+  if(resolvedSelectedSlug!==selectedChannelSlug){
+    setSelectedChannel(resolvedSelectedSlug);
+  } else if(!resolvedSelectedSlug&&selectedChannelSlug){
+    setSelectedChannel('');
+  }
 }
 
 function addYouTubeChannel() {
@@ -5276,12 +5325,17 @@ function runPipelineForTopic(itemOrTopic, opts){
   _plQueueItemId=opts.queueItemId||item.id||null;
   modal.style.display='flex';
   var payload={topic:topic};
+  var resolvedChannelSlug=_resolveValidChannelSlug(item.channel_slug||selectedChannelSlug||'', !!_plAutoUpload);
+  if(resolvedChannelSlug&&item.channel_slug!==resolvedChannelSlug){
+    item.channel_slug=resolvedChannelSlug;
+    saveQ();
+  }
   if(item.scriptText)payload.scriptText=item.scriptText;
   if(item.guidance)payload.guidance=item.guidance;
   if(item.voice_id)payload.voice_id=item.voice_id;
   payload.language=item.language||getCurrentPipelineLanguage();
   payload.duration_hint=item.duration_hint||getScriptDuration();
-  if(item.channel_slug||selectedChannelSlug)payload.channel_slug=item.channel_slug||selectedChannelSlug;
+  if(resolvedChannelSlug)payload.channel_slug=resolvedChannelSlug;
   if(item.hasSEO){
     payload.seoTitle=item.seoTitle||'';
     payload.seoDescription=item.seoDescription||'';
