@@ -358,6 +358,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/env":
             self._json_response(self._handle_env())
+        elif path == "/api/debug/paths":
+            self._json_response(self._handle_debug_paths())
         elif path == "/api/pipeline/status":
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
@@ -1673,6 +1675,36 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         merged[env_key] = str(value)
 
         return merged
+
+    def _handle_debug_paths(self) -> dict:
+        """GET /api/debug/paths — dump runtime path config and disk state."""
+        import shutil
+        from config import DB_PATH, AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR
+        dirs_to_check = {
+            "/data": "/data",
+            "/tmp": "/tmp",
+            "db": DB_PATH,
+            "audio": AUDIO_DIR,
+            "images": IMAGES_DIR,
+            "output": OUTPUT_DIR,
+            "runs": os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs"),
+        }
+        result = {}
+        for label, p in dirs_to_check.items():
+            entry = {"path": p, "exists": os.path.exists(p)}
+            if os.path.exists(p):
+                try:
+                    entry["writable"] = os.access(p, os.W_OK)
+                    if os.path.isdir(p):
+                        total, used, free = shutil.disk_usage(p)
+                        entry["disk_free_mb"] = round(free / 1024 / 1024, 1)
+                        entry["files"] = len(os.listdir(p))
+                except Exception as e:
+                    entry["error"] = str(e)
+            result[label] = entry
+        env_keys = ["DB_PATH", "AUDIO_DIR", "IMAGES_DIR", "OUTPUT_DIR", "RENDER", "RENDER_SERVICE_ID"]
+        result["env"] = {k: os.getenv(k, "") for k in env_keys}
+        return result
 
     def _is_allowed_static_path(self, path: str) -> bool:
         if not path or not path.startswith("/"):

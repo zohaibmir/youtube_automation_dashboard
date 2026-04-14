@@ -21,7 +21,7 @@ import uuid
 from voice_config import normalize_language
 
 from audio_generator import generate_audio_segments
-from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR
+from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR, SCHEDULER_SHORTS_COUNT
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _RUNS_DIR = os.path.join(_BASE_DIR, "runs")          # runs/<job_id>/ per-run workdirs
@@ -55,6 +55,16 @@ def _audio_duration(path: str) -> float:
         return float(streams[0]["duration"]) if streams else 0.0
     except Exception:
         return 0.0
+
+
+def _resolve_shorts_count(shorts_count: int | None) -> int:
+    """Resolve Shorts count with config default and clamp to 0-3."""
+    if shorts_count is None:
+        shorts_count = SCHEDULER_SHORTS_COUNT
+    try:
+        return max(0, min(3, int(shorts_count)))
+    except Exception:
+        return 2
 
 
 def build_chapters(segments: list[dict], audio_files: list[str]) -> str:
@@ -263,7 +273,7 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
     thumb_data_url: str | None = None, channel_slug: str | None = None,
-    guidance: str | None = None, shorts_count: int = 0,
+    guidance: str | None = None, shorts_count: int | None = None,
     voice_id: str | None = None, language: str | None = None,
     duration_hint: str | None = None) -> str:
     """Execute the full pipeline for a given topic.
@@ -283,6 +293,8 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
     Returns:
         The YouTube video ID on success.
     """
+    shorts_count = _resolve_shorts_count(shorts_count)
+
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
     audio_dir  = os.path.join(job_dir, "audio")
@@ -455,7 +467,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
                channel_slug: str | None = None, guidance: str | None = None,
-               voice_id: str | None = None, shorts_count: int = 0,
+               voice_id: str | None = None, shorts_count: int | None = None,
                language: str | None = None, duration_hint: str | None = None) -> tuple:
     """Run pipeline steps 1–5 (generate + build) WITHOUT uploading.
 
@@ -469,6 +481,8 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         if progress_cb:
             progress_cb(msg)
         logger.info(msg)
+
+    shorts_count = _resolve_shorts_count(shorts_count)
 
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
