@@ -518,6 +518,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_queue_reorder_post()
         elif path == "/api/queue/replace":
             self._handle_queue_replace_post()
+        elif path == "/api/queue/add":
+            self._handle_queue_add_post()
         elif path.startswith("/api/queue/delete/"):
             self._handle_queue_delete(path)
         else:
@@ -790,6 +792,31 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "added": added,
                 "pending": pending_count(),
                 "cleared": clear_existing,
+            })
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_add_post(self) -> None:
+        """POST /api/queue/add — add a single topic to the database queue.
+
+        Body: {"topic": "...", "type": "Manual"}
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            topic = (data.get("topic") or "").strip() if isinstance(data, dict) else ""
+            topic_type = (data.get("type") or "Manual").strip() if isinstance(data, dict) else "Manual"
+
+            if not topic:
+                self._json_response({"ok": False, "error": "topic is required"})
+                return
+
+            from topic_queue import enqueue_topics, pending_count
+            added = enqueue_topics([topic], topic_type=topic_type)
+            self._json_response({
+                "ok": True,
+                "added": added,
+                "pending": pending_count(),
             })
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})

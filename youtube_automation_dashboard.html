@@ -670,10 +670,11 @@ canvas{display:block;width:100%;height:auto}
     <div class="stat-card"><div class="stat-val" id="q-weeks" style="color:var(--teal)">-</div><div class="stat-lbl">Weeks planned</div></div>
   </div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:10px">Add video</div>
+    <div class="card-title" style="margin-bottom:10px">Add to scheduler queue</div>
+    <div class="info-box" style="margin-bottom:8px;font-size:11px">Topics added here go to the database queue (shown below in Priority list) and can be processed by the scheduler or "Run Next" button.</div>
     <div class="grid2">
       <div><label>Topic</label><input type="text" id="q-topic-input" placeholder="e.g. Pakistan mein stock market guide"/></div>
-      <div><label>Date</label><input type="date" id="q-date-input"/></div>
+      <div><label>Date</label><input type="date" id="q-date-input" style="display:none"/></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="addManualToQueue()">+ Add</button>
@@ -3549,13 +3550,23 @@ function addQueueItem(title,type,meta){
 }
 function addManualToQueue(){
   var t=document.getElementById('q-topic-input').value.trim();
-  var d=document.getElementById('q-date-input').value;
   if(!t){alert('Enter a topic.');return;}
-  var item={id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending',language:getCurrentPipelineLanguage(),duration_hint:getScriptDuration()};
-  if(selectedChannelSlug){item.channel_slug=selectedChannelSlug;}
-  queue.push(item);
-  document.getElementById('q-topic-input').value='';
-  saveQ();renderQueue();
+  var btn=event.target;
+  if(btn){btn.disabled=true;btn.textContent='Adding…';}
+  fetchJsonSafe('/api/queue/add',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({topic:t,type:'Manual'})
+  }).then(function(d){
+    if(!d||!d.ok){throw new Error((d&&d.error)||'add failed');}
+    document.getElementById('q-topic-input').value='';
+    loadSchedulerQueuePriority();
+    alert('✓ Topic added to queue ('+d.pending+' pending)');
+    if(btn){btn.disabled=false;btn.textContent='+ Add';}
+  }).catch(function(err){
+    alert('Failed to add: '+(err.message||err));
+    if(btn){btn.disabled=false;btn.textContent='+ Add';}
+  });
 }
 async function generateFullPlan(){
   setBtn('gen-plan-btn','gen-plan-icon','&#9889;',true);
