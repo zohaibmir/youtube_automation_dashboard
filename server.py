@@ -1905,67 +1905,81 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_debug_processes(self) -> dict:
         """GET /api/debug/processes — show running processes consuming CPU/memory."""
-        import subprocess
         result = {
             "python_processes": [],
             "ffmpeg_processes": [],
-            "top_cpu_processes": [],
+            "child_processes": [],
             "error": None
         }
         
         try:
-            # Get all python processes
-            ps_out = subprocess.check_output(
-                ["ps", "aux"],
-                text=True,
-                timeout=5
-            )
-            lines = ps_out.strip().split("\n")[1:]  # Skip header
+            import psutil
+            current_pid = os.getpid()
+            current_process = psutil.Process(current_pid)
             
-            for line in lines:
-                parts = line.split(None, 10)
-                if len(parts) < 11:
-                    continue
-                    
-                user, pid, cpu, mem = parts[0], parts[1], parts[2], parts[3]
-                cmd = parts[10]
-                
-                # Track python processes
-                if "python" in cmd.lower():
-                    result["python_processes"].append({
-                        "pid": pid,
-                        "cpu": cpu,
-                        "mem": mem,
-                        "command": cmd[:150]
-                    })
-                
-                # Track ffmpeg processes
-                if "ffmpeg" in cmd.lower():
-                    result["ffmpeg_processes"].append({
-                        "pid": pid,
-                        "cpu": cpu,
-                        "mem": mem,
-                        "command": cmd[:150]
-                    })
-                
-                # Track high CPU processes (>5%)
+            # Get all child processes of this server
+            children = current_process.children(recursive=True)
+            
+            for proc in children:
                 try:
-                    if float(cpu) > 5.0:
-                        result["top_cpu_processes"].append({
-                            "pid": pid,
-                            "cpu": cpu,
-                            "mem": mem,
-                            "command": cmd[:150]
-                        })
-                except ValueError:
-                    pass
+                    info = {
+                        "pid": proc.pid,
+                        "name": proc.name(),
+                        "cpu_percent": round(proc.cpu_percent(interval=0.1), 1),
+                        "mem_mb": round(proc.memory_info().rss / 1024 / 1024, 1),
+                        "status": proc.status(),
+                        "cmdline": " ".join(proc.cmdline()[:10])[:150]
+                    }
                     
+                    result["child_processes"].append(info)
+                    
+                    if "python" in info["name"].lower():
+                        result["python_processes"].append(info)
+                    if "ffmpeg" in info["name"].lower():
+                        result["ffmpeg_processes"].append(info)
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            
+            # Add current server process info
+            result["server_process"] = {
+                "pid": current_pid,
+                "cpu_percent": round(current_process.cpu_percent(interval=0.1), 1),
+                "mem_mb": round(current_process.memory_info().rss / 1024 / 1024, 1),
+                "num_threads": current_process.num_threads(),
+                "num_children": len(children)
+            }
+                    
+        except ImportError:
+            # psutil not available - try reading /proc
+            result["error"] = "psutil not installed"
+            try:
+                current_pid = os.getpid()
+                proc_dirs = [d for d in os.listdir("/proc") if d.isdigit()]
+                
+                for pid_str in proc_dirs:
+                    try:
+                        cmdline_file = f"/proc/{pid_str}/cmdline"
+                        if not os.path.exists(cmdline_file):
+                            continue
+                        with open(cmdline_file, "rb") as f:
+                            cmdline = f.read().decode("utf-8", errors="ignore").replace("\x00", " ").strip()
+                        
+                        if "python" in cmdline.lower() or "ffmpeg" in cmdline.lower():
+                            result["child_processes"].append({
+                                "pid": pid_str,
+                                "cmdline": cmdline[:150]
+                            })
+                    except Exception:
+                        pass
+            except Exception as e:
+                result["error"] = f"psutil unavailable, /proc failed: {e}"
         except Exception as e:
             result["error"] = str(e)
         
+        result["total_children"] = len(result["child_processes"])
         result["total_python"] = len(result["python_processes"])
         result["total_ffmpeg"] = len(result["ffmpeg_processes"])
-        result["total_high_cpu"] = len(result["top_cpu_processes"])
         
         return result
 
