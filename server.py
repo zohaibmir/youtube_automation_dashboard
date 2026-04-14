@@ -407,6 +407,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response(self._handle_env())
         elif path == "/api/debug/paths":
             self._json_response(self._handle_debug_paths())
+        elif path == "/api/debug/processes":
+            self._json_response(self._handle_debug_processes())
         elif path == "/api/pipeline/status":
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
@@ -1899,6 +1901,72 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception:
             pass
 
+        return result
+
+    def _handle_debug_processes(self) -> dict:
+        """GET /api/debug/processes — show running processes consuming CPU/memory."""
+        import subprocess
+        result = {
+            "python_processes": [],
+            "ffmpeg_processes": [],
+            "top_cpu_processes": [],
+            "error": None
+        }
+        
+        try:
+            # Get all python processes
+            ps_out = subprocess.check_output(
+                ["ps", "aux"],
+                text=True,
+                timeout=5
+            )
+            lines = ps_out.strip().split("\n")[1:]  # Skip header
+            
+            for line in lines:
+                parts = line.split(None, 10)
+                if len(parts) < 11:
+                    continue
+                    
+                user, pid, cpu, mem = parts[0], parts[1], parts[2], parts[3]
+                cmd = parts[10]
+                
+                # Track python processes
+                if "python" in cmd.lower():
+                    result["python_processes"].append({
+                        "pid": pid,
+                        "cpu": cpu,
+                        "mem": mem,
+                        "command": cmd[:150]
+                    })
+                
+                # Track ffmpeg processes
+                if "ffmpeg" in cmd.lower():
+                    result["ffmpeg_processes"].append({
+                        "pid": pid,
+                        "cpu": cpu,
+                        "mem": mem,
+                        "command": cmd[:150]
+                    })
+                
+                # Track high CPU processes (>5%)
+                try:
+                    if float(cpu) > 5.0:
+                        result["top_cpu_processes"].append({
+                            "pid": pid,
+                            "cpu": cpu,
+                            "mem": mem,
+                            "command": cmd[:150]
+                        })
+                except ValueError:
+                    pass
+                    
+        except Exception as e:
+            result["error"] = str(e)
+        
+        result["total_python"] = len(result["python_processes"])
+        result["total_ffmpeg"] = len(result["ffmpeg_processes"])
+        result["total_high_cpu"] = len(result["top_cpu_processes"])
+        
         return result
 
     def _is_allowed_static_path(self, path: str) -> bool:
