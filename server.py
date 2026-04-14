@@ -518,6 +518,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_queue_reorder_post()
         elif path == "/api/queue/replace":
             self._handle_queue_replace_post()
+        elif path.startswith("/api/queue/delete/"):
+            self._handle_queue_delete(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -534,6 +536,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channel_remove(path)
         elif path.startswith("/api/social/platforms/"):
             self._handle_social_platform_remove(path)
+        elif path.startswith("/api/queue/delete/"):
+            self._handle_queue_delete(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -787,6 +791,31 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "pending": pending_count(),
                 "cleared": clear_existing,
             })
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_delete(self, path: str) -> None:
+        """DELETE/POST /api/queue/delete/<id> — delete a single queue item."""
+        try:
+            # Extract ID from path: /api/queue/delete/123 → 123
+            topic_id = path.rsplit("/", 1)[-1].strip()
+            if not topic_id.isdigit():
+                self._json_response({"ok": False, "error": "invalid topic ID"})
+                return
+
+            from topic_queue import delete_topic, pending_count
+            deleted = delete_topic(int(topic_id))
+            if deleted:
+                self._json_response({
+                    "ok": True,
+                    "deleted": True,
+                    "pending": pending_count(),
+                })
+            else:
+                self._json_response({
+                    "ok": False,
+                    "error": "topic not found or already deleted",
+                })
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
 

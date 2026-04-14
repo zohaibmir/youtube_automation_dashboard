@@ -173,3 +173,21 @@ def reorder_pending_topics(ordered_ids: list[int]) -> int:
         except Exception:
             conn.rollback()
             raise
+
+
+def delete_topic(topic_id: int) -> bool:
+    """Delete a topic from the queue by ID.
+
+    Returns True if a row was deleted, False otherwise.
+    """
+    try:
+        with _conn() as conn:
+            conn.execute("DELETE FROM topic_queue WHERE id=?", (int(topic_id),))
+            conn.commit()
+            deleted = conn.total_changes > 0
+            if deleted:
+                logger.info("Deleted queue topic ID %d", topic_id)
+            return deleted
+    except Exception as e:
+        logger.error("Failed to delete queue topic ID %d: %s", topic_id, e)
+        return False
