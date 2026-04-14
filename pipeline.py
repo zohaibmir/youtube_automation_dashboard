@@ -24,8 +24,19 @@ from audio_generator import generate_audio_segments
 from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR, SCHEDULER_SHORTS_COUNT
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_RUNS_DIR = os.path.join(_BASE_DIR, "runs")          # runs/<job_id>/ per-run workdirs
-_JOBS_DIR = os.path.join(_BASE_DIR, ".jobs")         # .jobs/<job_id>.json per-job status
+
+def _hosted_data_root() -> str:
+    """Return /data if on Render/hosted, otherwise empty string."""
+    if (
+        os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+        or os.getenv("RENDER_EXTERNAL_URL")
+    ) and os.path.isdir("/data"):
+        return "/data"
+    return ""
+
+_data_root = _hosted_data_root()
+_RUNS_DIR = os.path.join(_data_root, "runs") if _data_root else os.path.join(_BASE_DIR, "runs")
+_JOBS_DIR = os.path.join(_data_root, ".jobs") if _data_root else os.path.join(_BASE_DIR, ".jobs")
 
 os.makedirs(_RUNS_DIR, exist_ok=True)
 os.makedirs(_JOBS_DIR, exist_ok=True)

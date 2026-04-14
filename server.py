@@ -85,6 +85,19 @@ try:
 except Exception as _db_err:
     print(f"[server.py] DB not available ({_db_err}) — /api/db/* will return empty data")
 
+# Ensure all storage directories exist on the persistent disk.
+# This runs unconditionally at startup — critical on Render where /data is a
+# fresh volume that starts empty after the first deploy or disk re-attach.
+try:
+    from config import AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR
+    for _d in [AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR,
+               os.path.join(OUTPUT_DIR, "shorts"),
+               os.path.join(OUTPUT_DIR, "clips")]:
+        os.makedirs(_d, exist_ok=True)
+    print(f"[server.py] Storage dirs ready: audio={AUDIO_DIR} images={IMAGES_DIR} output={OUTPUT_DIR}")
+except Exception as _dir_err:
+    print(f"[server.py] WARNING: could not create storage dirs: {_dir_err}")
+
 
 def _db_stats() -> dict:
     if not _DB_AVAILABLE:
