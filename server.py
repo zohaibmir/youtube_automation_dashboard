@@ -305,6 +305,24 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
             })
 
 
+def _get_pipeline_runs_dir() -> str:
+    """Return the effective _RUNS_DIR from the pipeline module (may be /data/runs on Render)."""
+    try:
+        import pipeline as _pl
+        return _pl._RUNS_DIR
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
+
+
+def _get_pipeline_jobs_dir() -> str:
+    """Return the effective _JOBS_DIR from the pipeline module (may be /data/.jobs on Render)."""
+    try:
+        import pipeline as _pl
+        return _pl._JOBS_DIR
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".jobs")
+
+
 class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _check_auth(self) -> bool:
@@ -1700,7 +1718,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "audio": AUDIO_DIR,
             "images": IMAGES_DIR,
             "output": OUTPUT_DIR,
-            "runs": os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs"),
+            "runs": _get_pipeline_runs_dir(),
+            "jobs": _get_pipeline_jobs_dir(),
         }
         result = {}
         for label, p in dirs_to_check.items():
