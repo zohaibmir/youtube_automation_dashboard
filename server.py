@@ -474,6 +474,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"ok": True})
         elif path == "/api/pipeline/kill" or path.startswith("/api/pipeline/kill/"):
             self._handle_pipeline_kill(path)
+        elif path == "/api/pipeline/cleanup":
+            self._handle_pipeline_cleanup()
         elif path == "/api/settings/sync-env":
             self._handle_settings_sync_env()
         elif path == "/api/settings":
@@ -871,6 +873,64 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
             })
         self._json_response(result)
+
+    def _handle_pipeline_cleanup(self) -> None:
+        """POST /api/pipeline/cleanup — Force cleanup of all stuck jobs and DB records."""
+        import glob
+        import sqlite3
+        from config import DB_PATH
+        from pipeline import kill_pipeline
+        
+        stats = {
+            "killed_processes": 0,
+            "reset_db_records": 0,
+            "cleared_job_files": 0,
+            "errors": []
+        }
+        
+        # 1. Kill any running pipeline processes
+        try:
+            result = kill_pipeline(job_id=None)
+            stats["killed_processes"] = result.get("killed", 0)
+        except Exception as e:
+            stats["errors"].append(f"Kill failed: {e}")
+        
+        # 2. Reset in-memory pipeline state
+        with _pipeline_lock:
+            _pipeline_job.update({
+                "status": "idle", "topic": None, "message": "",
+                "video_url": None, "thumbnail_url": None, "title": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
+                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+            })
+        
+        # 3. Reset stuck DB records
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            affected = conn.execute(
+                "UPDATE videos SET status='error' WHERE status='generating'"
+            ).rowcount
+            conn.commit()
+            conn.close()
+            stats["reset_db_records"] = affected
+        except Exception as e:
+            stats["errors"].append(f"DB reset failed: {e}")
+        
+        # 4. Clear old job files (keep only last 5)
+        try:
+            from pipeline import _JOBS_DIR
+            job_files = sorted(glob.glob(os.path.join(_JOBS_DIR, "*.json")), 
+                             key=os.path.getmtime, reverse=True)
+            for fp in job_files[5:]:  # keep 5 most recent
+                try:
+                    os.remove(fp)
+                    stats["cleared_job_files"] += 1
+                except Exception:
+                    pass
+        except Exception as e:
+            stats["errors"].append(f"Job file cleanup failed: {e}")
+        
+        self._json_response({"ok": True, "stats": stats})
 
     def _handle_settings_sync_env(self) -> None:
         """POST /api/settings/sync-env — Write dashboard production settings to .env."""
