@@ -409,6 +409,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response(self._handle_debug_paths())
         elif path == "/api/debug/processes":
             self._json_response(self._handle_debug_processes())
+        elif path == "/api/debug/config":
+            # Show actual computed config values (not env vars)
+            from config import FFMPEG_THREADS, FFMPEG_PRESET, VISUAL_MODE, TTS_PROVIDER
+            self._json_response({
+                "FFMPEG_THREADS": FFMPEG_THREADS,
+                "FFMPEG_PRESET": FFMPEG_PRESET,
+                "VISUAL_MODE": VISUAL_MODE,
+                "TTS_PROVIDER": TTS_PROVIDER
+            })
         elif path == "/api/pipeline/status":
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
