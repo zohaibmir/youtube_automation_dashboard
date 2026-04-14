@@ -59,8 +59,14 @@ SCHEDULER_PUBLISH_TIMES: str = os.getenv("SCHEDULER_PUBLISH_TIMES", "")
 SCHEDULER_CHANNEL: str | None = os.getenv("SCHEDULER_CHANNEL", "").strip() or None
 # Shorts to generate for scheduler / run-next jobs (0-3)
 SCHEDULER_SHORTS_COUNT: int = int(os.getenv("SCHEDULER_SHORTS_COUNT", "2"))
-# Encoder threads for MoviePy/FFmpeg (override per environment)
-FFMPEG_THREADS: int = max(1, int(os.getenv("FFMPEG_THREADS", "4")))
+# Encoder threads for MoviePy/FFmpeg.
+# On Render (shared 0.1 CPU) default to 1 — extra threads cause context-switch overhead.
+_default_threads = "1" if _is_hosted_environment() else "4"
+FFMPEG_THREADS: int = max(1, int(os.getenv("FFMPEG_THREADS", _default_threads)))
+# FFmpeg encoding preset. On Render use ultrafast — YouTube re-encodes on ingest anyway,
+# so quality loss is irrelevant and encode time drops ~4×.
+_default_preset = "ultrafast" if _is_hosted_environment() else "fast"
+FFMPEG_PRESET: str = os.getenv("FFMPEG_PRESET", _default_preset)
 
 # ── File Paths ────────────────────────────────────────────────────────────────
 DB_PATH: str = _resolve_storage_path("DB_PATH", "yt_automation.db")

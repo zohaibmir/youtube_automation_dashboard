@@ -1734,8 +1734,39 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 except Exception as e:
                     entry["error"] = str(e)
             result[label] = entry
-        env_keys = ["DB_PATH", "AUDIO_DIR", "IMAGES_DIR", "OUTPUT_DIR", "RENDER", "RENDER_SERVICE_ID"]
+        env_keys = ["DB_PATH", "AUDIO_DIR", "IMAGES_DIR", "OUTPUT_DIR", "RENDER", "RENDER_SERVICE_ID",
+                    "FFMPEG_THREADS", "FFMPEG_PRESET"]
         result["env"] = {k: os.getenv(k, "") for k in env_keys}
+
+        # ── System memory + CPU load ────────────────────────────────────────
+        try:
+            import resource as _res
+            rss_kb = _res.getrusage(_res.RUSAGE_SELF).ru_maxrss
+            # On Linux ru_maxrss is KB; on macOS it's bytes
+            import platform
+            rss_mb = round(rss_kb / (1 if platform.system() == "Linux" else 1024), 1)
+            result["memory"] = {"process_rss_mb": rss_mb}
+            # Available system RAM via /proc/meminfo (Linux only)
+            if os.path.exists("/proc/meminfo"):
+                with open("/proc/meminfo") as _f:
+                    _mem = {line.split(":")[0]: int(line.split()[1])
+                            for line in _f if ":" in line}
+                result["memory"]["system_total_mb"] = round(_mem.get("MemTotal", 0) / 1024, 0)
+                result["memory"]["system_free_mb"] = round(
+                    (_mem.get("MemAvailable") or _mem.get("MemFree", 0)) / 1024, 0)
+        except Exception:
+            pass
+
+        try:
+            load1, load5, load15 = os.getloadavg()
+            result["cpu"] = {
+                "load_avg_1m": round(load1, 2),
+                "load_avg_5m": round(load5, 2),
+                "load_avg_15m": round(load15, 2),
+            }
+        except Exception:
+            pass
+
         return result
 
     def _is_allowed_static_path(self, path: str) -> bool:

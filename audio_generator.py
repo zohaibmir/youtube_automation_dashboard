@@ -9,6 +9,7 @@ Uses the strategy pattern via core.tts_providers for clean extensibility.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from config import (
@@ -130,47 +131,40 @@ def generate_audio_segments(
 
     provider = _build_provider(edge_voice=edge_voice, channel_slug=channel_slug, language=language)
     fallback = _build_fallback_provider(edge_voice=edge_voice, channel_slug=channel_slug, language=language)
-    use_fallback = False
+    total = len(segments)
 
-    paths: list[str] = []
-
-    for i, segment in enumerate(segments):
+    def _gen_one(i: int, segment: dict) -> tuple[int, str | None]:
+        """Generate audio for a single segment; fall back to secondary provider on error."""
         narration = segment.get("narration", "")
         if not narration:
             logger.warning("Segment %d has no narration — skipping", i)
-            continue
-
+            return i, None
         path = f"{out_dir}/seg_{i:03d}.mp3"
-        active = fallback if use_fallback else provider
+        for active in (provider, fallback):
+            try:
+                logger.info("Generating audio (%s) segment %d/%d", active.name, i + 1, total)
+                active.generate(narration, path)
+                return i, path
+            except Exception as e:
+                err_str = str(e)
+                if "quota" in err_str.lower() or "401" in err_str or "429" in err_str:
+                    logger.warning("%s quota/auth — falling back for segment %d: %s", active.name, i, e)
+                else:
+                    logger.warning("%s error for segment %d: %s — trying fallback", active.name, i, e)
+        logger.error("All providers failed for segment %d", i)
+        return i, None
 
-        try:
-            logger.info("Generating audio (%s) for segment %d/%d",
-                        active.name, i + 1, len(segments))
-            active.generate(narration, path)
-            paths.append(path)
-        except Exception as e:
-            # ElevenLabs quota/auth errors → switch to fallback for remaining
-            err_str = str(e)
-            if "quota" in err_str.lower() or "401" in err_str or "429" in err_str:
-                logger.warning(
-                    "%s quota/auth error — switching to %s for remaining %d segments: %s",
-                    active.name, fallback.name, len(segments) - i, e,
-                )
-                use_fallback = True
-                try:
-                    fallback.generate(narration, path)
-                    paths.append(path)
-                except Exception as fe:
-                    logger.error("Fallback also failed for segment %d: %s", i, fe)
-            else:
-                # Try fallback once for transient errors
-                logger.warning("%s error: %s — trying fallback", active.name, e)
-                try:
-                    fallback.generate(narration, path)
-                    paths.append(path)
-                except Exception as fe:
-                    logger.error("Both providers failed for segment %d: %s", i, fe)
+    # Run up to 4 TTS calls in parallel — edge-tts is network I/O so this gives
+    # ~3-4× speedup on 11-segment scripts with no extra CPU cost.
+    results: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_gen_one, i, seg): i for i, seg in enumerate(segments)}
+        for future in as_completed(futures):
+            i, path = future.result()
+            if path:
+                results[i] = path
 
-    logger.info("Audio generation complete (%s): %d files written to %s",
-                provider.name, len(paths), out_dir)
+    paths = [results[i] for i in range(total) if i in results]
+    logger.info("Audio generation complete (%s): %d/%d files written to %s",
+                provider.name, len(paths), total, out_dir)
     return paths

@@ -13,6 +13,12 @@ import requests
 
 from config import IMAGES_DIR, PEXELS_API_KEY
 
+import os as _os
+# On Render (low RAM, shared bandwidth) cap downloaded clips at 1080p.
+# Locally allow up to UHD. This prevents downloading 2-4K files that
+# _ffmpeg_prepare_video immediately downscales to 1080p anyway.
+_MAX_VIDEO_WIDTH = 1920 if (_os.getenv("RENDER") or _os.getenv("RENDER_SERVICE_ID")) else 9999
+
 logger = logging.getLogger(__name__)
 
 _PEXELS_PHOTO_URL  = "https://api.pexels.com/v1/search"
@@ -134,7 +140,7 @@ def _search_pexels_video(keyword: str) -> str | None:
             if vf.get("quality") not in ("hd", "uhd"):
                 continue
             w, h = vf.get("width", 0), vf.get("height", 0)
-            if w < 1280:
+            if w < 1280 or w > _MAX_VIDEO_WIDTH:
                 continue
             pixels = w * h
             if pixels > best_pixels:
