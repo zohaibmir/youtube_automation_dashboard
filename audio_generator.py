@@ -9,6 +9,7 @@ Uses the strategy pattern via core.tts_providers for clean extensibility.
 """
 
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -20,6 +21,10 @@ from core.tts_providers import ITTSProvider, create_tts_provider, EdgeTTSProvide
 from voice_config import get_voice_settings
 
 logger = logging.getLogger(__name__)
+
+# On Render (512MB RAM) use 2 workers to avoid memory pressure when combined
+# with concurrent visual downloads. Locally use 4 for faster throughput.
+_TTS_WORKERS = 2 if (os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")) else 4
 
 
 def _get_dashboard_edge_voice() -> str | None:
@@ -154,10 +159,11 @@ def generate_audio_segments(
         logger.error("All providers failed for segment %d", i)
         return i, None
 
-    # Run up to 4 TTS calls in parallel — edge-tts is network I/O so this gives
-    # ~3-4× speedup on 11-segment scripts with no extra CPU cost.
+    # Run up to 2-4 TTS calls in parallel (2 on Render, 4 locally) — edge-tts is
+    # network I/O so this gives ~3-4× speedup on 11-segment scripts with no extra CPU cost.
+    # On Render we use 2 to avoid memory pressure when combined with visual downloads.
     results: dict[int, str] = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=_TTS_WORKERS) as executor:
         futures = {executor.submit(_gen_one, i, seg): i for i, seg in enumerate(segments)}
         for future in as_completed(futures):
             i, path = future.result()

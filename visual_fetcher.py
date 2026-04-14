@@ -26,7 +26,11 @@ _PEXELS_VIDEO_URL  = "https://api.pexels.com/videos/search"
 _PICSUM_FALLBACK   = "https://picsum.photos/seed/{seed}/1920/1080"
 _REQUEST_TIMEOUT   = 20
 _MAX_RETRIES       = 3
-_PARALLEL_WORKERS  = 5
+# On Render (512MB RAM) use 2 workers to avoid memory spikes from concurrent large downloads.
+# Locally use 5 for faster throughput.
+_PARALLEL_WORKERS  = 2 if (_os.getenv("RENDER") or _os.getenv("RENDER_SERVICE_ID")) else 5
+# Download chunk size for streaming to disk (1MB chunks)
+_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def _pexels_headers() -> dict:
@@ -47,6 +51,19 @@ def _retry_get(url: str, **kwargs) -> requests.Response:
             wait = 2 ** attempt
             logger.warning("Retry %d/%d for %s: %s (wait %ds)", attempt, _MAX_RETRIES, url[:80], e, wait)
             time.sleep(wait)
+
+
+def _stream_download(url: str, dest_path: str, timeout: int = _REQUEST_TIMEOUT) -> None:
+    """Download file in chunks to avoid loading entire file into memory.
+    
+    Crucial for low-RAM environments like Render (512MB). Downloading 12×50MB
+    video clips in memory simultaneously causes OOM kills.
+    """
+    resp = _retry_get(url, timeout=timeout, stream=True)
+    with open(dest_path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=_DOWNLOAD_CHUNK_SIZE):
+            if chunk:  # filter out keep-alive chunks
+                f.write(chunk)
 
 
 # ── Images ────────────────────────────────────────────────────────────────────
@@ -75,9 +92,7 @@ def _fetch_single_image(i: int, segment: dict, out_dir: str) -> str:
         image_url = _PICSUM_FALLBACK.format(seed=i)
 
     path = f"{out_dir}/img_{i:03d}.jpg"
-    data = _retry_get(image_url).content
-    with open(path, "wb") as f:
-        f.write(data)
+    _stream_download(image_url, path)
     return path
 
 
@@ -103,9 +118,7 @@ def fetch_segment_images(
                 logger.error("Image fetch failed for segment %d: %s", idx, e)
                 # Fallback: picsum placeholder
                 path = f"{out_dir}/img_{idx:03d}.jpg"
-                data = requests.get(_PICSUM_FALLBACK.format(seed=idx), timeout=_REQUEST_TIMEOUT).content
-                with open(path, "wb") as f:
-                    f.write(data)
+                _stream_download(_PICSUM_FALLBACK.format(seed=idx), path, timeout=_REQUEST_TIMEOUT)
                 results[idx] = path
 
     paths = [results[i] for i in range(len(segments))]
@@ -186,9 +199,7 @@ def _fetch_single_video(i: int, segment: dict, out_dir: str) -> str:
     if video_url:
         path = f"{out_dir}/vid_{i:03d}.mp4"
         logger.info("Downloading video clip → %s", path)
-        data = _retry_get(video_url, timeout=60).content
-        with open(path, "wb") as f:
-            f.write(data)
+        _stream_download(video_url, path, timeout=60)
     else:
         # Fallback: grab an image instead (video_builder handles .jpg transparently)
         logger.warning("No Pexels video for '%s' — falling back to image", keyword)
@@ -203,9 +214,7 @@ def _fetch_single_video(i: int, segment: dict, out_dir: str) -> str:
         except Exception:
             image_url = _PICSUM_FALLBACK.format(seed=i)
         path = f"{out_dir}/vid_{i:03d}.jpg"
-        data = _retry_get(image_url).content
-        with open(path, "wb") as f:
-            f.write(data)
+        _stream_download(image_url, path)
 
     return path
 
