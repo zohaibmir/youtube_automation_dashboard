@@ -98,6 +98,22 @@ try:
 except Exception as _dir_err:
     print(f"[server.py] WARNING: could not create storage dirs: {_dir_err}")
 
+# On restart, reset any DB video records still stuck at 'generating' to 'error'.
+# They're from a previous server process (e.g. killed by a deploy) and will never complete.
+try:
+    import sqlite3 as _sqlite3
+    from config import DB_PATH as _DB_PATH
+    _conn = _sqlite3.connect(_DB_PATH, timeout=5)
+    _affected = _conn.execute(
+        "UPDATE videos SET status='error' WHERE status='generating'"
+    ).rowcount
+    _conn.commit()
+    _conn.close()
+    if _affected:
+        print(f"[server.py] Reset {_affected} stuck 'generating' video record(s) to 'error' on startup")
+except Exception as _reset_err:
+    print(f"[server.py] WARNING: could not reset stuck video records: {_reset_err}")
+
 
 def _db_stats() -> dict:
     if not _DB_AVAILABLE:

@@ -41,6 +41,27 @@ _JOBS_DIR = os.path.join(_data_root, ".jobs") if _data_root else os.path.join(_B
 os.makedirs(_RUNS_DIR, exist_ok=True)
 os.makedirs(_JOBS_DIR, exist_ok=True)
 
+
+def _recover_stale_jobs() -> None:
+    """On startup, mark any persisted 'running' jobs as 'interrupted'.
+
+    They're from a previous server process (e.g. killed by a deploy) and
+    can never complete. PID 1 is always alive in containers so the normal
+    PID-liveness check is not reliable — we use server restart as the signal.
+    """
+    for fp in glob.glob(os.path.join(_JOBS_DIR, "*.json")):
+        try:
+            with open(fp) as f:
+                data = json.load(f)
+            if data.get("status") == "running":
+                data["status"] = "interrupted"
+                with open(fp, "w") as fout:
+                    json.dump(data, fout)
+        except Exception:
+            pass
+
+_recover_stale_jobs()
+
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start, get_video_record, is_video_uploaded
 from shorts_builder import build_shorts
