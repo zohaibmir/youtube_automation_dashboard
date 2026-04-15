@@ -18,14 +18,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY *.html ./
 COPY core ./core
-COPY branding ./branding
 
 # Create persistent directories (mounted as volumes)
 RUN mkdir -p audio images output data branding
 
 # ── Runtime ───────────────────────────────────────────────────
-# Default: run dashboard server. Override per-platform or per-service with START_CMD.
-CMD ["sh", "-lc", "${START_CMD:-python server.py}"]
+# Run dashboard server.
+CMD ["python", "server.py"]
 
 # ── Build & run ───────────────────────────────────────────────
 # docker build -t yt-automation .

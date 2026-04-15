@@ -23,8 +23,9 @@ import json
 import os
 import sys
 import threading
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 # ── .env reader ───────────────────────────────────────────────────────────────
 try:
@@ -84,6 +85,35 @@ try:
 except Exception as _db_err:
     print(f"[server.py] DB not available ({_db_err}) — /api/db/* will return empty data")
 
+# Ensure all storage directories exist on the persistent disk.
+# This runs unconditionally at startup — critical on Render where /data is a
+# fresh volume that starts empty after the first deploy or disk re-attach.
+try:
+    from config import AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR
+    for _d in [AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR,
+               os.path.join(OUTPUT_DIR, "shorts"),
+               os.path.join(OUTPUT_DIR, "clips")]:
+        os.makedirs(_d, exist_ok=True)
+    print(f"[server.py] Storage dirs ready: audio={AUDIO_DIR} images={IMAGES_DIR} output={OUTPUT_DIR}")
+except Exception as _dir_err:
+    print(f"[server.py] WARNING: could not create storage dirs: {_dir_err}")
+
+# On restart, reset any DB video records still stuck at 'generating' to 'error'.
+# They're from a previous server process (e.g. killed by a deploy) and will never complete.
+try:
+    import sqlite3 as _sqlite3
+    from config import DB_PATH as _DB_PATH
+    _conn = _sqlite3.connect(_DB_PATH, timeout=5)
+    _affected = _conn.execute(
+        "UPDATE videos SET status='error' WHERE status='generating'"
+    ).rowcount
+    _conn.commit()
+    _conn.close()
+    if _affected:
+        print(f"[server.py] Reset {_affected} stuck 'generating' video record(s) to 'error' on startup")
+except Exception as _reset_err:
+    print(f"[server.py] WARNING: could not reset stuck video records: {_reset_err}")
+
 
 def _db_stats() -> dict:
     if not _DB_AVAILABLE:
@@ -127,8 +157,9 @@ def _db_queue() -> list:
     try:
         conn = get_conn()
         rows = conn.execute(
-            "SELECT id, topic, type, scheduled, status, added_at "
-            "FROM topic_queue ORDER BY id DESC LIMIT 100"
+            "SELECT id, topic, type, scheduled, status, priority, added_at "
+            "FROM topic_queue ORDER BY "
+            "CASE WHEN status='pending' THEN 0 ELSE 1 END, priority ASC, id DESC LIMIT 200"
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -170,6 +201,7 @@ _PUBLIC_STATIC_FILES = {
     "/southasian_youtube_dashboard.html",
     "/thumbnail.jpg",
     "/favicon.ico",
+    "/voices.json",
 }
 _PUBLIC_STATIC_PREFIXES = (
     "/output/",
@@ -178,6 +210,7 @@ _PUBLIC_STATIC_PREFIXES = (
     "/branding/",
     "/music/",
     "/output/shorts_animated/",
+    "/scripts/voice_samples/",
 )
 _BLOCKED_STATIC_PREFIXES = (
     "/.git",
@@ -223,6 +256,7 @@ _AUTH_ENABLED = bool(_DASHBOARD_USERNAME and _DASHBOARD_PASSWORD)
 _pipeline_job: dict = {
     "status":        "idle",   # idle | running | ready | uploading | done | failed
     "topic":         None,
+    "channel_slug":  None,
     "message":       "",
     "video_url":     None,
     "thumbnail_url": None,
@@ -242,8 +276,12 @@ _pipeline_lock = threading.Lock()
 # { job_id: { status, topic, paths, error } }
 _shorts_jobs: dict = {}
 
+# Hosted OAuth pending state for adding YouTube channels from production UI.
+_pending_channel_oauth: dict = {}
+_pending_channel_oauth_lock = threading.Lock()
 
-def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, shorts_count=0) -> None:
+
+def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None, guidance=None, voice_id=None, shorts_count=0, channel_slug=None, language=None, duration_hint=None) -> None:
     """Background thread: runs pipeline steps 1-5, updates _pipeline_job."""
     try:
         from pipeline import run_preview
@@ -260,7 +298,8 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
         video_path, thumb_path, content, vid_id = run_preview(
             topic, progress_cb=_progress,
             script_text=script_text, seo=seo, thumb_data_url=thumb_data_url,
-            guidance=guidance, shorts_count=shorts_count,
+            channel_slug=channel_slug, guidance=guidance, voice_id=voice_id,
+            shorts_count=shorts_count, language=language, duration_hint=duration_hint,
         )
         slug = video_path.replace("\\", "/").split("/")[-1]  # just the filename
         shorts_paths = content.pop("_shorts_paths", [])
@@ -273,6 +312,7 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
                 "title":         content.get("title", topic),
                 "vid_db_id":     vid_id,
                 "shorts_count":  len(shorts_paths),
+                "channel_slug":  channel_slug,
                 "_content":      content,
                 "_video_path":   video_path,
                 "_thumb_path":   thumb_path,
@@ -285,6 +325,24 @@ def _run_pipeline_bg(topic: str, script_text=None, seo=None, thumb_data_url=None
                 "message": str(exc),
                 "error":   str(exc),
             })
+
+
+def _get_pipeline_runs_dir() -> str:
+    """Return the effective _RUNS_DIR from the pipeline module (may be /data/runs on Render)."""
+    try:
+        import pipeline as _pl
+        return _pl._RUNS_DIR
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
+
+
+def _get_pipeline_jobs_dir() -> str:
+    """Return the effective _JOBS_DIR from the pipeline module (may be /data/.jobs on Render)."""
+    try:
+        import pipeline as _pl
+        return _pl._JOBS_DIR
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".jobs")
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -312,10 +370,40 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return False
 
+    def _is_localhost(self) -> bool:
+        """Check if request is from localhost. Allows 127.0.0.1, ::1, ::ffff:127.0.0.1"""
+        return self.client_address[0] in _LOCALHOST
+
+    def _is_request_allowed(self, require_localhost: bool = False) -> bool:
+        """Check if request is allowed.
+        Args:
+            require_localhost: If True, require localhost when auth is not enabled.
+                             If False, allow any address when auth is not enabled.
+        Returns True if request should be allowed.
+        """
+        # Always allow localhost
+        if self._is_localhost():
+            return True
+        # If auth is enabled, request already passed _check_auth, so allow it
+        if _AUTH_ENABLED:
+            return True
+        # If auth is not enabled and require_localhost is False, allow (production mode)
+        if not require_localhost:
+            return True
+        # If auth is not enabled and require_localhost is True, deny remote requests
+        return False
+
+    def _deny_request(self, reason: str = "Not allowed", status_code: int = 403) -> bool:
+        """Send error response and return True to signal early exit."""
+        self._json_response({"ok": False, "error": reason}, status_code=status_code)
+        return True
+
     def do_GET(self) -> None:
-        if not self._check_auth():
-            return
         path = self.path.split("?")[0]
+        # OAuth callback must be reachable without credentials (Google redirects here via popup)
+        if path != "/api/channels/oauth/callback":
+            if not self._check_auth():
+                return
         if path == "/":
             self.send_response(302)
             self.send_header("Location", "/youtube_automation_dashboard.html")
@@ -323,6 +411,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/env":
             self._json_response(self._handle_env())
+        elif path == "/api/debug/paths":
+            self._json_response(self._handle_debug_paths())
+        elif path == "/api/debug/processes":
+            self._json_response(self._handle_debug_processes())
+        elif path == "/api/debug/config":
+            # Show actual computed config values (not env vars)
+            from config import FFMPEG_THREADS, FFMPEG_PRESET, VISUAL_MODE, TTS_PROVIDER
+            self._json_response({
+                "FFMPEG_THREADS": FFMPEG_THREADS,
+                "FFMPEG_PRESET": FFMPEG_PRESET,
+                "VISUAL_MODE": VISUAL_MODE,
+                "TTS_PROVIDER": TTS_PROVIDER
+            })
         elif path == "/api/pipeline/status":
             with _pipeline_lock:
                 safe = {k: v for k, v in _pipeline_job.items() if not k.startswith("_")}
@@ -335,13 +436,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"jobs": list_jobs()})
         elif path == "/api/channels":
             self._handle_channels_get()
+        elif path == "/api/channels/oauth/callback":
+            self._handle_channel_oauth_callback()
         elif path == "/api/youtube/oauth-diagnostics":
             self._handle_youtube_oauth_diagnostics()
+        elif path == "/api/channels/export-tokens":
+            self._handle_channels_export_tokens()
+        elif path == "/api/voices/samples":
+            self._handle_voices_samples()
+        elif path.startswith("/api/channels/") and path.endswith("/voice"):
+            self._handle_channel_voice_get(path)
         elif path == "/api/social/platforms":
             self._handle_social_platforms_get()
         elif path == "/api/branding/assets":
             self._handle_branding_assets_get()
-        elif path == "/api/channel/audit":
+        elif path == "/api/queue/pending":
+            self._handle_queue_pending_get()
+        elif path.startswith("/api/channel/audit"):
             self._handle_channel_audit()
         elif path == "/api/studio/videos":
             self._handle_studio_videos_get()
@@ -351,6 +462,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_shorts_status()
         elif path == "/api/shorts/list":
             self._handle_shorts_list()
+        elif path.startswith("/api/studio/download/"):
+            self._handle_studio_download_get(path)
         elif path in _DB_ROUTES:
             self._json_response(_DB_ROUTES[path]())
         else:
@@ -367,6 +480,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/pipeline/run":
             self._handle_pipeline_run()
+        elif path == "/api/scheduler/run-next":
+            self._handle_scheduler_run_next()
         elif path == "/api/pipeline/upload":
             self._handle_pipeline_upload()
         elif path == "/api/pipeline/cancel":
@@ -374,12 +489,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({
                     "status": "idle", "topic": None, "message": "",
                     "video_url": None, "thumbnail_url": None, "title": None,
-                    "vid_db_id": None, "youtube_url": None, "error": None,
+                    "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             self._json_response({"ok": True})
-        elif path == "/api/pipeline/kill":
-            self._handle_pipeline_kill()
+        elif path == "/api/pipeline/kill" or path.startswith("/api/pipeline/kill/"):
+            self._handle_pipeline_kill(path)
+        elif path == "/api/pipeline/cleanup":
+            self._handle_pipeline_cleanup()
         elif path == "/api/settings/sync-env":
             self._handle_settings_sync_env()
         elif path == "/api/settings":
@@ -388,8 +505,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_music_upload()
         elif path == "/api/channels/add":
             self._handle_channel_add()
+        elif path == "/api/channels/import-tokens":
+            self._handle_channels_import_tokens()
         elif path == "/api/channels/default":
             self._handle_channel_set_default()
+        elif path.startswith("/api/channels/") and path.endswith("/voice"):
+            self._handle_channel_voice_post(path)
         elif path == "/api/social/config":
             self._handle_social_config_post()
         elif path == "/api/social/upload":
@@ -412,6 +533,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_studio_upload_main()
         elif path == "/api/studio/upload-clips":
             self._handle_studio_upload_clips()
+        elif path == "/api/studio/delete":
+            self._handle_studio_delete()
         elif path == "/api/community-post/generate":
             self._handle_community_post_generate()
         elif path == "/api/shorts/generate-animated":
@@ -420,6 +543,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_shorts_pipeline_run()
         elif path == "/api/shorts/distribute":
             self._handle_shorts_distribute()
+        elif path == "/api/queue/reorder":
+            self._handle_queue_reorder_post()
+        elif path == "/api/queue/replace":
+            self._handle_queue_replace_post()
+        elif path == "/api/queue/add":
+            self._handle_queue_add_post()
+        elif path.startswith("/api/queue/delete/"):
+            self._handle_queue_delete(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -430,10 +561,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/upload-music":
             self._handle_music_delete()
+        elif path == "/api/studio/delete":
+            self._handle_studio_delete()
         elif path.startswith("/api/channels/"):
             self._handle_channel_remove(path)
         elif path.startswith("/api/social/platforms/"):
             self._handle_social_platform_remove(path)
+        elif path.startswith("/api/queue/delete/"):
+            self._handle_queue_delete(path)
         else:
             self.send_response(404)
             self.end_headers()
@@ -443,6 +578,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
             topic = data.get("topic", "").strip()
+            channel_slug   = data.get("channel_slug", "").strip() or None
             if not topic:
                 self._json_response({"ok": False, "error": "topic required"}); return
             with _pipeline_lock:
@@ -451,7 +587,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({
                     "status": "running", "topic": topic, "message": "Starting…",
                     "video_url": None, "thumbnail_url": None, "title": None,
-                    "vid_db_id": None, "youtube_url": None, "error": None,
+                    "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": channel_slug,
                     "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
                 })
             # Optional pre-computed assets from dashboard
@@ -461,6 +597,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             seo_tags_raw   = data.get("seoTags", "").strip() or None
             thumb_data_url = data.get("thumbDataUrl", "").strip() or None
             guidance       = data.get("guidance", "").strip() or None
+            voice_id       = data.get("voice_id", "").strip() or None
+            language       = data.get("language", "").strip() or None
+            duration_hint  = data.get("duration_hint", "").strip() or None
             shorts_count   = int(data.get("shortsCount", 0) or 0)
             seo = None
             if seo_title or seo_description or seo_tags_raw:
@@ -473,13 +612,71 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 target=_run_pipeline_bg,
                 args=(topic,),
                 kwargs={"script_text": script_text, "seo": seo, "thumb_data_url": thumb_data_url,
-                        "guidance": guidance, "shorts_count": shorts_count},
+                    "guidance": guidance, "voice_id": voice_id, "shorts_count": shorts_count,
+                    "channel_slug": channel_slug, "language": language, "duration_hint": duration_hint},
                 daemon=True,
             )
             t.start()
             self._json_response({"ok": True})
         except Exception as ex:
             self._json_response({"ok": False, "error": str(ex)})
+
+    def _handle_scheduler_run_next(self) -> None:
+        """Dequeue the next pending topic and run the pipeline — same logic as the scheduler."""
+        try:
+            from topic_queue import dequeue_topic, mark_topic_done, mark_topic_failed, pending_count
+            from config import SCHEDULER_CHANNEL, SCHEDULER_SHORTS_COUNT
+        except Exception as ex:
+            self._json_response({"ok": False, "error": f"Import error: {ex}"}); return
+
+        with _pipeline_lock:
+            if _pipeline_job["status"] == "running":
+                self._json_response({"ok": False, "error": "Pipeline already running"}); return
+
+        topic = dequeue_topic()
+        if not topic:
+            self._json_response({"ok": False, "error": "Queue is empty — no pending topics"}); return
+
+        # Read optional channel override from request body
+        channel_slug = None
+        shorts_count = None
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                body = json.loads(self.rfile.read(length))
+                channel_slug = body.get("channel_slug", "").strip() or None
+                if isinstance(body, dict) and body.get("shorts_count") is not None:
+                    shorts_count = int(body.get("shorts_count"))
+        except Exception:
+            pass
+        channel_slug = channel_slug or SCHEDULER_CHANNEL or None
+        if shorts_count is None:
+            shorts_count = SCHEDULER_SHORTS_COUNT
+        try:
+            shorts_count = max(0, min(3, int(shorts_count)))
+        except Exception:
+            shorts_count = 2
+
+        with _pipeline_lock:
+            _pipeline_job.update({
+                "status": "running", "topic": topic, "message": "Starting…",
+                "video_url": None, "thumbnail_url": None, "title": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": channel_slug,
+                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+            })
+
+        def _bg():
+            try:
+                _run_pipeline_bg(topic, channel_slug=channel_slug, shorts_count=shorts_count)
+                mark_topic_done(topic)
+            except Exception as exc:
+                mark_topic_failed(topic)
+                with _pipeline_lock:
+                    _pipeline_job.update({"status": "failed", "error": str(exc)})
+
+        t = threading.Thread(target=_bg, daemon=True)
+        t.start()
+        self._json_response({"ok": True, "topic": topic, "shorts_count": shorts_count})
 
     def _handle_pipeline_upload(self) -> None:
         if not _DB_AVAILABLE:
@@ -559,19 +756,208 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 _pipeline_job.update({"status": "failed", "message": str(exc), "error": str(exc)})
             self._json_response({"ok": False, "error": str(exc)})
 
-    def _handle_pipeline_kill(self) -> None:
-        """POST /api/pipeline/kill — Kill a running pipeline process and clear lock."""
+    def _handle_queue_pending_get(self) -> None:
+        """GET /api/queue/pending — pending queue in run-next order."""
+        try:
+            from topic_queue import get_pending_topics
+            self._json_response({"ok": True, "items": get_pending_topics(limit=300)})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_reorder_post(self) -> None:
+        """POST /api/queue/reorder — persist pending queue order.
+
+        Body: {ordered_ids: [12, 8, 5, ...]}
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            ordered_ids = data.get("ordered_ids") if isinstance(data, dict) else None
+            if not isinstance(ordered_ids, list) or not ordered_ids:
+                self._json_response({"ok": False, "error": "ordered_ids list is required"})
+                return
+            from topic_queue import reorder_pending_topics
+            changed = reorder_pending_topics(ordered_ids)
+            self._json_response({"ok": True, "updated": changed})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_replace_post(self) -> None:
+        """POST /api/queue/replace — clear queue and seed new topics.
+
+        Body:
+          {
+            "topics": ["...", "..."],
+            "clear_existing": true,
+            "topic_type": "AI-generated"
+          }
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            topics = data.get("topics") if isinstance(data, dict) else None
+            clear_existing = bool(data.get("clear_existing", True)) if isinstance(data, dict) else True
+            topic_type = (data.get("topic_type") or "AI-generated").strip() if isinstance(data, dict) else "AI-generated"
+
+            if not isinstance(topics, list) or not topics:
+                self._json_response({"ok": False, "error": "topics list is required"})
+                return
+
+            clean_topics = [str(t).strip() for t in topics if str(t).strip()]
+            if not clean_topics:
+                self._json_response({"ok": False, "error": "no valid topics provided"})
+                return
+
+            if clear_existing:
+                from database import _conn
+                with _conn() as conn:
+                    conn.execute("DELETE FROM topic_queue")
+                    conn.commit()
+
+            from topic_queue import enqueue_topics, pending_count
+            added = enqueue_topics(clean_topics, topic_type=topic_type)
+            self._json_response({
+                "ok": True,
+                "added": added,
+                "pending": pending_count(),
+                "cleared": clear_existing,
+            })
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_add_post(self) -> None:
+        """POST /api/queue/add — add a single topic to the database queue.
+
+        Body: {"topic": "...", "type": "Manual"}
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            topic = (data.get("topic") or "").strip() if isinstance(data, dict) else ""
+            topic_type = (data.get("type") or "Manual").strip() if isinstance(data, dict) else "Manual"
+
+            if not topic:
+                self._json_response({"ok": False, "error": "topic is required"})
+                return
+
+            from topic_queue import enqueue_topics, pending_count
+            added = enqueue_topics([topic], topic_type=topic_type)
+            self._json_response({
+                "ok": True,
+                "added": added,
+                "pending": pending_count(),
+            })
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_queue_delete(self, path: str) -> None:
+        """DELETE/POST /api/queue/delete/<id> — delete a single queue item."""
+        try:
+            # Extract ID from path: /api/queue/delete/123 → 123
+            topic_id = path.rsplit("/", 1)[-1].strip()
+            if not topic_id.isdigit():
+                self._json_response({"ok": False, "error": "invalid topic ID"})
+                return
+
+            from topic_queue import delete_topic, pending_count
+            deleted = delete_topic(int(topic_id))
+            if deleted:
+                self._json_response({
+                    "ok": True,
+                    "deleted": True,
+                    "pending": pending_count(),
+                })
+            else:
+                self._json_response({
+                    "ok": False,
+                    "error": "topic not found or already deleted",
+                })
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_pipeline_kill(self, path: str = "/api/pipeline/kill") -> None:
+        """POST /api/pipeline/kill[/<job_id>] — Kill running pipeline job(s) and clear lock."""
         from pipeline import kill_pipeline
-        result = kill_pipeline()
+        job_id = None
+        if path.startswith("/api/pipeline/kill/"):
+            job_id = path.rsplit("/", 1)[-1].strip() or None
+        if not job_id:
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                data = json.loads(self.rfile.read(length)) if length else {}
+                if isinstance(data, dict):
+                    job_id = (data.get("job_id") or "").strip() or None
+            except Exception:
+                job_id = None
+
+        result = kill_pipeline(job_id=job_id)
         # Also reset the in-memory pipeline state
         with _pipeline_lock:
             _pipeline_job.update({
                 "status": "idle", "topic": None, "message": "",
                 "video_url": None, "thumbnail_url": None, "title": None,
-                "vid_db_id": None, "youtube_url": None, "error": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
                 "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
             })
         self._json_response(result)
+
+    def _handle_pipeline_cleanup(self) -> None:
+        """POST /api/pipeline/cleanup — Force cleanup of all stuck jobs and DB records."""
+        import glob
+        import sqlite3
+        from config import DB_PATH
+        from pipeline import kill_pipeline
+        
+        stats = {
+            "killed_processes": 0,
+            "reset_db_records": 0,
+            "cleared_job_files": 0,
+            "errors": []
+        }
+        
+        # 1. Kill any running pipeline processes
+        try:
+            result = kill_pipeline(job_id=None)
+            stats["killed_processes"] = result.get("killed", 0)
+        except Exception as e:
+            stats["errors"].append(f"Kill failed: {e}")
+        
+        # 2. Reset in-memory pipeline state
+        with _pipeline_lock:
+            _pipeline_job.update({
+                "status": "idle", "topic": None, "message": "",
+                "video_url": None, "thumbnail_url": None, "title": None,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
+                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+            })
+        
+        # 3. Reset stuck DB records
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            affected = conn.execute(
+                "UPDATE videos SET status='error' WHERE status='generating'"
+            ).rowcount
+            conn.commit()
+            conn.close()
+            stats["reset_db_records"] = affected
+        except Exception as e:
+            stats["errors"].append(f"DB reset failed: {e}")
+        
+        # 4. Clear old job files (keep only last 5)
+        try:
+            from pipeline import _JOBS_DIR
+            job_files = sorted(glob.glob(os.path.join(_JOBS_DIR, "*.json")), 
+                             key=os.path.getmtime, reverse=True)
+            for fp in job_files[5:]:  # keep 5 most recent
+                try:
+                    os.remove(fp)
+                    stats["cleared_job_files"] += 1
+                except Exception:
+                    pass
+        except Exception as e:
+            stats["errors"].append(f"Job file cleanup failed: {e}")
+        
+        self._json_response({"ok": True, "stats": stats})
 
     def _handle_settings_sync_env(self) -> None:
         """POST /api/settings/sync-env — Write dashboard production settings to .env."""
@@ -644,8 +1030,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_music_upload(self) -> None:
         """Accept a multipart/form-data .mp3 upload and save to music/bg_music.mp3."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             self._json_response({"ok": False, "error": "Expected multipart/form-data"})
@@ -687,8 +1072,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_music_delete(self) -> None:
         """Remove background music file and clear the .env key."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         dest = Path(__file__).parent / "music" / "bg_music.mp3"
         if dest.exists():
             dest.unlink()
@@ -698,10 +1082,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # ── Channel management ─────────────────────────────────────────────────
 
     def _handle_channels_get(self) -> None:
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
-        from youtube_uploader import list_channels
-        self._json_response({"ok": True, "channels": list_channels()})
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        try:
+            from youtube_uploader import list_channels
+            self._json_response({"ok": True, "channels": list_channels()})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)}, status_code=500)
 
     def _handle_youtube_oauth_diagnostics(self) -> None:
         """GET /api/youtube/oauth-diagnostics — safe checks for hosted OAuth setup."""
@@ -727,6 +1114,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "web_client_id": {
                 "present": env_client_id_set,
                 "masked": env_client_id_masked,
+            },
+            "web_client_secret": {
+                "present": bool(os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip()),
             },
             "desktop_client_secrets": {
                 "path": client_secrets_path,
@@ -757,8 +1147,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         tips = []
         if not env_client_id_set:
             tips.append("Set YOUTUBE_WEB_CLIENT_ID in hosted environment variables.")
+        if not os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip():
+            tips.append("Set YOUTUBE_WEB_CLIENT_SECRET in hosted environment variables.")
         if origin:
             tips.append(f"Add {origin} to Authorized JavaScript origins in Google Cloud OAuth Web client.")
+            tips.append(f"Add {origin}/api/channels/oauth/callback to Authorized redirect URIs in Google Cloud OAuth Web client.")
         if not client_secrets_exists:
             tips.append("Upload client_secrets.json to hosted volume and set YOUTUBE_CLIENT_SECRETS path.")
         if not any(c.get("has_token") for c in diagnostics["channels"]):
@@ -767,26 +1160,232 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         diagnostics["tips"] = tips
         self._json_response(diagnostics)
 
+    def _handle_channels_export_tokens(self) -> None:
+        """GET /api/channels/export-tokens — Export all tokens as base64 env var values.
+
+        Returns a dict of env var names → base64 values ready to paste into Render.
+        """
+        if not self._is_request_allowed(require_localhost=False): return
+        import base64
+        from youtube_uploader import _TOKENS_DIR, _CHANNELS_FILE
+        result: dict = {}
+        try:
+            if os.path.exists(_CHANNELS_FILE):
+                with open(_CHANNELS_FILE, "rb") as f:
+                    result["YOUTUBE_CHANNELS_REGISTRY"] = base64.b64encode(f.read()).decode()
+            files = [fn for fn in os.listdir(_TOKENS_DIR) if fn.endswith(".json") and fn != "channels.json"] if os.path.isdir(_TOKENS_DIR) else []
+            for fn in files:
+                slug = fn[:-5].upper().replace("-", "_")
+                with open(os.path.join(_TOKENS_DIR, fn), "rb") as f:
+                    result[f"YOUTUBE_TOKEN_{slug}"] = base64.b64encode(f.read()).decode()
+            self._json_response({"ok": True, "env_vars": result})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_channels_import_tokens(self) -> None:
+        """POST /api/channels/import-tokens — Write token files from base64 payload.
+
+        Body: {"channels_b64": "...", "tokens": {"slug": "base64_content", ...}}
+        """
+        if not self._is_request_allowed(require_localhost=False): return
+        import base64
+        from youtube_uploader import _TOKENS_DIR, _CHANNELS_FILE, _ensure_tokens_dir
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            _ensure_tokens_dir()
+            written = []
+            channels_b64 = data.get("channels_b64", "").strip()
+            if channels_b64:
+                with open(_CHANNELS_FILE, "wb") as f:
+                    f.write(base64.b64decode(channels_b64))
+                written.append("channels.json")
+            for slug, token_b64 in (data.get("tokens") or {}).items():
+                token_path = os.path.join(_TOKENS_DIR, f"{slug}.json")
+                with open(token_path, "wb") as f:
+                    f.write(base64.b64decode(token_b64.strip()))
+                written.append(f"{slug}.json")
+            self._json_response({"ok": True, "written": written})
+        except Exception as exc:
+            self._json_response({"ok": False, "error": str(exc)})
+
     def _handle_channel_add(self) -> None:
         """POST /api/channels/add — Run OAuth flow to add a YouTube channel."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
             name = data.get("name", "").strip()
             if not name:
                 self._json_response({"ok": False, "error": "name required"}); return
-            from youtube_uploader import add_channel
-            slug, channel_id = add_channel(name)
-            self._json_response({"ok": True, "slug": slug, "channel_id": channel_id})
+
+            origin = self.headers.get("Origin", "").strip().lower()
+            host = self.headers.get("Host", "").strip().lower()
+            is_railway = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+            is_local_host_header = (
+                host.startswith("localhost")
+                or host.startswith("127.0.0.1")
+                or host.startswith("[::1]")
+            )
+            is_local_origin = (
+                (not origin)
+                or origin.startswith("http://localhost")
+                or origin.startswith("http://127.0.0.1")
+            )
+            use_local_browser_flow = (not is_railway) and is_local_host_header and is_local_origin
+
+            # Localhost can keep using installed-app flow.
+            if use_local_browser_flow:
+                from youtube_uploader import add_channel
+                slug, channel_id = add_channel(name)
+                self._json_response({"ok": True, "slug": slug, "channel_id": channel_id})
+                return
+
+            # Hosted flow: return an OAuth URL to open in browser popup.
+            from config import YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES
+            from google_auth_oauthlib.flow import Flow
+
+            scheme = "https" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else "http"
+            if not origin and host:
+                origin = f"{scheme}://{host}"
+            if not origin:
+                self._json_response({"ok": False, "error": "Cannot resolve dashboard origin for OAuth callback."})
+                return
+
+            redirect_uri = f"{origin}/api/channels/oauth/callback"
+
+            web_client_id = os.getenv("YOUTUBE_WEB_CLIENT_ID", "").strip()
+            web_client_secret = os.getenv("YOUTUBE_WEB_CLIENT_SECRET", "").strip()
+            flow = None
+
+            if web_client_id and web_client_secret:
+                web_cfg = {
+                    "web": {
+                        "client_id": web_client_id,
+                        "client_secret": web_client_secret,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "redirect_uris": [redirect_uri],
+                    }
+                }
+                flow = Flow.from_client_config(web_cfg, scopes=YOUTUBE_SCOPES)
+            else:
+                # Fallback: if client_secrets has a `web` block, use it.
+                try:
+                    cfg = json.loads(Path(YOUTUBE_CLIENT_SECRETS).read_text(encoding="utf-8"))
+                    if "web" in cfg:
+                        flow = Flow.from_client_config(cfg, scopes=YOUTUBE_SCOPES)
+                except Exception:
+                    pass
+
+            if flow is None:
+                self._json_response({
+                    "ok": False,
+                    "error": (
+                        "Hosted OAuth is not configured for Web client. "
+                        "Set YOUTUBE_WEB_CLIENT_ID and YOUTUBE_WEB_CLIENT_SECRET in Railway, "
+                        f"and add redirect URI: {redirect_uri}"
+                    ),
+                })
+                return
+
+            flow.redirect_uri = redirect_uri
+            auth_url, state = flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="consent",
+            )
+            with _pending_channel_oauth_lock:
+                _pending_channel_oauth[state] = {"flow": flow, "name": name}
+
+            self._json_response({
+                "ok": True,
+                "requires_oauth": True,
+                "oauth_url": auth_url,
+                "message": "Open the OAuth popup and finish Google sign-in.",
+            })
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
 
+    def _handle_channel_oauth_callback(self) -> None:
+        """GET /api/channels/oauth/callback — Complete hosted OAuth and save channel token."""
+        if not self._is_request_allowed(require_localhost=False):
+            self.send_response(403)
+            self.end_headers()
+            return
+
+        qs = parse_qs(urlparse(self.path).query)
+        state = (qs.get("state") or [""])[0]
+        error = (qs.get("error") or [""])[0]
+
+        if error:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                f"<h3>Google OAuth Error</h3><p>{error}</p>"
+                "<script>if(window.opener){window.opener.postMessage({type:'yt_channel_added',ok:false,error:'oauth_error'},'*');}window.close();</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        with _pending_channel_oauth_lock:
+            pending = _pending_channel_oauth.pop(state, None)
+
+        if not pending:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                "<h3>OAuth session expired</h3><p>Please try adding the channel again.</p>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(400)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        flow = pending["flow"]
+        channel_name = pending["name"]
+        try:
+            proto = self.headers.get("X-Forwarded-Proto", "https") or "https"
+            host = self.headers.get("Host", "")
+            full_url = f"{proto}://{host}{self.path}"
+            flow.fetch_token(authorization_response=full_url)
+
+            from youtube_uploader import add_channel_from_credentials
+            slug, channel_id = add_channel_from_credentials(channel_name, flow.credentials)
+
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                "<h3>Channel Connected</h3><p>You can close this window now.</p>"
+                f"<script>if(window.opener){{window.opener.postMessage({{type:'yt_channel_added',ok:true,slug:{json.dumps(slug)},channel_id:{json.dumps(channel_id)}}},'*');}}window.close();</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as exc:
+            body = (
+                "<html><body style='font-family:sans-serif;padding:20px'>"
+                f"<h3>Channel Connect Failed</h3><p>{str(exc)}</p>"
+                "<script>if(window.opener){window.opener.postMessage({type:'yt_channel_added',ok:false,error:'callback_failed'},'*');}</script>"
+                "</body></html>"
+            ).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
     def _handle_channel_set_default(self) -> None:
         """POST /api/channels/default — Set a channel as default."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -801,8 +1400,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_remove(self, path: str) -> None:
         """DELETE /api/channels/<slug> — Remove a channel."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         slug = path.replace("/api/channels/", "").strip("/")
         if not slug:
             self._json_response({"ok": False, "error": "slug required"}); return
@@ -810,12 +1408,86 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         ok = remove_channel(slug)
         self._json_response({"ok": ok, "error": None if ok else "Channel not found"})
 
+    def _handle_channel_voice_get(self, path: str) -> None:
+        """GET /api/channels/<slug>/voice — Get channel's voice setting."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        try:
+            slug = path.replace("/api/channels/", "").replace("/voice", "").strip("/")
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"}); return
+            from voice_config import get_channel_voice
+            voice_id = get_channel_voice(slug)
+            self._json_response({"ok": True, "voice_id": voice_id})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_voice_post(self, path: str) -> None:
+        """POST /api/channels/<slug>/voice — Set channel's voice."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        try:
+            slug = path.replace("/api/channels/", "").replace("/voice", "").strip("/")
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"}); return
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            voice_id = data.get("voice_id", "").strip()
+            if not voice_id:
+                self._json_response({"ok": False, "error": "voice_id required"}); return
+            from voice_config import set_channel_voice
+            ok = set_channel_voice(slug, voice_id)
+            self._json_response({
+                "ok": ok,
+                "voice_id": voice_id if ok else None,
+                "error": None if ok else "Failed to set voice"
+            })
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    # ── Voice endpoints ───────────────────────────────────────────────────────
+
+    def _handle_voices_samples(self) -> None:
+        """GET /api/voices/samples — List available voice samples organized by language."""
+        if not self._is_request_allowed(require_localhost=False):
+            self._json_response({"ok": False, "error": "Not allowed"}, status_code=403); return
+        
+        from pathlib import Path
+        voice_samples_dir = Path(__file__).parent / "scripts" / "voice_samples"
+        
+        # Organize voice samples by language
+        voices_by_lang = {}
+        
+        if voice_samples_dir.exists():
+            for mp3_file in sorted(voice_samples_dir.glob("*.mp3")):
+                filename = mp3_file.name
+                # Parse filename: lang_voiceid_name.mp3
+                parts = filename.replace(".mp3", "").split("_", 2)
+                if len(parts) >= 3:
+                    lang, voice_id = parts[0], parts[1]
+                    voice_name = parts[2].replace("_", " ")
+                    
+                    if lang not in voices_by_lang:
+                        voices_by_lang[lang] = []
+                    
+                    voices_by_lang[lang].append({
+                        "voice_id": voice_id,
+                        "name": voice_name,
+                        "url": f"/scripts/voice_samples/{filename}",
+                        "file": filename,
+                    })
+        
+        self._json_response({
+            "ok": True,
+            "voices": voices_by_lang,
+            "total": sum(len(v) for v in voices_by_lang.values()),
+        })
+
     # ── Social platform endpoints ─────────────────────────────────────────────
 
     def _handle_social_platforms_get(self) -> None:
         """GET /api/social/platforms — List configured social platforms."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from social_uploader import list_platforms
         self._json_response(list_platforms())
 
@@ -823,15 +1495,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_assets_get(self) -> None:
         """GET /api/branding/assets — List existing branding files."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from branding_manager import list_assets
         self._json_response({"ok": True, "assets": list_assets()})
 
     def _handle_branding_generate(self) -> None:
         """POST /api/branding/generate — Generate banner, avatar, watermark."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -846,8 +1516,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_upload_banner(self) -> None:
         """POST /api/branding/upload-banner — Upload banner to YouTube."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -860,8 +1529,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_branding_set_trailer(self) -> None:
         """POST /api/branding/set-trailer — Set channel trailer video."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -877,19 +1545,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_audit(self) -> None:
         """GET /api/channel/audit — Full channel SEO audit."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        slug = (qs.get("slug") or [None])[0] or None
         try:
             from channel_manager import audit_channel
-            result = audit_channel()
+            result = audit_channel(slug)
             self._json_response(result)
         except Exception as e:
-            self._json_response({"ok": False, "error": str(e)})
+            err = str(e)
+            if err.startswith("TOKEN_REVOKED:"):
+                channel_name = err.split("TOKEN_REVOKED:", 1)[1]
+                self._json_response({
+                    "ok": False,
+                    "error": f"YouTube token for '{channel_name}' has been revoked or expired by Google.",
+                    "error_code": "token_revoked",
+                    "channel": channel_name,
+                })
+            else:
+                self._json_response({"ok": False, "error": err})
 
     def _handle_channel_update(self) -> None:
         """POST /api/channel/update — Update channel description/keywords/etc."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -908,8 +1587,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_fix_video(self) -> None:
         """POST /api/channel/fix-video — Fix a single video's SEO."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -925,11 +1603,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_channel_fix_all(self) -> None:
         """POST /api/channel/fix-all — Fix all videos with issues."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
             from channel_manager import fix_all_videos
-            result = fix_all_videos()
+            result = fix_all_videos(data.get("channel") or None)
             self._json_response(result)
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
@@ -938,15 +1617,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_videos_get(self) -> None:
         """GET /api/studio/videos — List video files in output/."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         from media_hub import list_videos
         self._json_response(list_videos())
 
     def _handle_studio_video_info(self, path: str) -> None:
         """GET /api/studio/info/<encoded_path> — Probe video metadata."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         import urllib.parse
         video_path = urllib.parse.unquote(path.replace("/api/studio/info/", "", 1))
         from media_hub import video_info
@@ -954,8 +1631,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_extract_clips(self) -> None:
         """POST /api/studio/extract-clips — Extract time-range clips from a video."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -971,8 +1647,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_upload_main(self) -> None:
         """POST /api/studio/upload-main — Upload existing video to YouTube."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -993,12 +1668,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_studio_upload_clips(self) -> None:
         """POST /api/studio/upload-clips — Upload clips to YouTube Shorts + social."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
-            clip_paths = data.get("clip_paths", [])
+            raw_paths = data.get("clip_paths", [])
+            clip_paths = [p for p in raw_paths if isinstance(p, str) and p.strip()]
             content = {
                 "title": data.get("title", ""),
                 "description": data.get("description", ""),
@@ -1020,8 +1695,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_community_post_generate(self) -> None:
         """POST /api/community-post/generate — AI-generate a community post draft."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length)) if length else {}
@@ -1037,11 +1711,61 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self._json_response({"ok": False, "error": str(e)})
 
+    def _handle_studio_delete(self) -> None:
+        """DELETE or POST /api/studio/delete — Delete a local video file from output/."""
+        if not self._is_request_allowed(require_localhost=False): return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            video_path = (data.get("video_path") or "").strip()
+            if not video_path:
+                self._json_response({"ok": False, "error": "video_path required"}); return
+            from media_hub import delete_video
+            self._json_response(delete_video(video_path))
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_studio_download_get(self, path: str) -> None:
+        """GET /api/studio/download/<encoded_filename> — Stream a video file for download."""
+        if not self._is_request_allowed(require_localhost=False): return
+        try:
+            import shutil
+            import urllib.parse
+            from config import OUTPUT_DIR
+            
+            filename = urllib.parse.unquote(path.replace("/api/studio/download/", "", 1))
+            video_path = Path(OUTPUT_DIR) / filename
+            
+            # Path traversal protection
+            if not str(video_path.resolve()).startswith(str(Path(OUTPUT_DIR).resolve())):
+                self.send_response(403)
+                self.end_headers()
+                return
+            
+            if not video_path.exists():
+                self._json_response({"ok": False, "error": "File not found"})
+                return
+            
+            # Stream file
+            self.send_response(200)
+            file_size = video_path.stat().st_size
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Content-Disposition", f"attachment; filename={filename}")
+            self.end_headers()
+            
+            with open(video_path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+        except Exception as e:
+            try:
+                self._json_response({"ok": False, "error": str(e)})
+            except:
+                pass
+
     def _handle_social_config_post(self) -> None:
         """POST /api/social/config — Save platform credentials.
         Body: {platform, access_token, user_id/page_id, enabled, ...}"""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
@@ -1057,8 +1781,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_social_platform_remove(self, path: str) -> None:
         """DELETE /api/social/platforms/<name> — Remove a social platform config."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         platform = path.replace("/api/social/platforms/", "").strip("/")
         from social_uploader import remove_platform
         ok = remove_platform(platform)
@@ -1068,8 +1791,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """POST /api/social/upload — Upload Shorts to selected social platforms.
         Body: {platforms: ["instagram", "facebook", "tiktok"]}
         Uses the Shorts from the current pipeline job."""
-        if self.client_address[0] not in _LOCALHOST:
-            self.send_response(403); self.end_headers(); return
+        if not self._is_request_allowed(require_localhost=False): return
         try:
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
@@ -1155,6 +1877,148 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         return merged
 
+    def _handle_debug_paths(self) -> dict:
+        """GET /api/debug/paths — dump runtime path config and disk state."""
+        import shutil
+        from config import DB_PATH, AUDIO_DIR, IMAGES_DIR, OUTPUT_DIR
+        dirs_to_check = {
+            "/data": "/data",
+            "/tmp": "/tmp",
+            "db": DB_PATH,
+            "audio": AUDIO_DIR,
+            "images": IMAGES_DIR,
+            "output": OUTPUT_DIR,
+            "runs": _get_pipeline_runs_dir(),
+            "jobs": _get_pipeline_jobs_dir(),
+        }
+        result = {}
+        for label, p in dirs_to_check.items():
+            entry = {"path": p, "exists": os.path.exists(p)}
+            if os.path.exists(p):
+                try:
+                    entry["writable"] = os.access(p, os.W_OK)
+                    if os.path.isdir(p):
+                        total, used, free = shutil.disk_usage(p)
+                        entry["disk_free_mb"] = round(free / 1024 / 1024, 1)
+                        entry["files"] = len(os.listdir(p))
+                except Exception as e:
+                    entry["error"] = str(e)
+            result[label] = entry
+        env_keys = ["DB_PATH", "AUDIO_DIR", "IMAGES_DIR", "OUTPUT_DIR", "RENDER", "RENDER_SERVICE_ID",
+                    "FFMPEG_THREADS", "FFMPEG_PRESET"]
+        result["env"] = {k: os.getenv(k, "") for k in env_keys}
+
+        # ── System memory + CPU load ────────────────────────────────────────
+        try:
+            import resource as _res
+            rss_kb = _res.getrusage(_res.RUSAGE_SELF).ru_maxrss
+            # On Linux ru_maxrss is KB; on macOS it's bytes
+            import platform
+            rss_mb = round(rss_kb / (1 if platform.system() == "Linux" else 1024), 1)
+            result["memory"] = {"process_rss_mb": rss_mb}
+            # Available system RAM via /proc/meminfo (Linux only)
+            if os.path.exists("/proc/meminfo"):
+                with open("/proc/meminfo") as _f:
+                    _mem = {line.split(":")[0]: int(line.split()[1])
+                            for line in _f if ":" in line}
+                result["memory"]["system_total_mb"] = round(_mem.get("MemTotal", 0) / 1024, 0)
+                result["memory"]["system_free_mb"] = round(
+                    (_mem.get("MemAvailable") or _mem.get("MemFree", 0)) / 1024, 0)
+        except Exception:
+            pass
+
+        try:
+            load1, load5, load15 = os.getloadavg()
+            result["cpu"] = {
+                "load_avg_1m": round(load1, 2),
+                "load_avg_5m": round(load5, 2),
+                "load_avg_15m": round(load15, 2),
+            }
+        except Exception:
+            pass
+
+        return result
+
+    def _handle_debug_processes(self) -> dict:
+        """GET /api/debug/processes — show running processes consuming CPU/memory."""
+        result = {
+            "python_processes": [],
+            "ffmpeg_processes": [],
+            "child_processes": [],
+            "error": None
+        }
+        
+        try:
+            import psutil
+            current_pid = os.getpid()
+            current_process = psutil.Process(current_pid)
+            
+            # Get all child processes of this server
+            children = current_process.children(recursive=True)
+            
+            for proc in children:
+                try:
+                    info = {
+                        "pid": proc.pid,
+                        "name": proc.name(),
+                        "cpu_percent": round(proc.cpu_percent(interval=0.1), 1),
+                        "mem_mb": round(proc.memory_info().rss / 1024 / 1024, 1),
+                        "status": proc.status(),
+                        "cmdline": " ".join(proc.cmdline()[:10])[:150]
+                    }
+                    
+                    result["child_processes"].append(info)
+                    
+                    if "python" in info["name"].lower():
+                        result["python_processes"].append(info)
+                    if "ffmpeg" in info["name"].lower():
+                        result["ffmpeg_processes"].append(info)
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            
+            # Add current server process info
+            result["server_process"] = {
+                "pid": current_pid,
+                "cpu_percent": round(current_process.cpu_percent(interval=0.1), 1),
+                "mem_mb": round(current_process.memory_info().rss / 1024 / 1024, 1),
+                "num_threads": current_process.num_threads(),
+                "num_children": len(children)
+            }
+                    
+        except ImportError:
+            # psutil not available - try reading /proc
+            result["error"] = "psutil not installed"
+            try:
+                current_pid = os.getpid()
+                proc_dirs = [d for d in os.listdir("/proc") if d.isdigit()]
+                
+                for pid_str in proc_dirs:
+                    try:
+                        cmdline_file = f"/proc/{pid_str}/cmdline"
+                        if not os.path.exists(cmdline_file):
+                            continue
+                        with open(cmdline_file, "rb") as f:
+                            cmdline = f.read().decode("utf-8", errors="ignore").replace("\x00", " ").strip()
+                        
+                        if "python" in cmdline.lower() or "ffmpeg" in cmdline.lower():
+                            result["child_processes"].append({
+                                "pid": pid_str,
+                                "cmdline": cmdline[:150]
+                            })
+                    except Exception:
+                        pass
+            except Exception as e:
+                result["error"] = f"psutil unavailable, /proc failed: {e}"
+        except Exception as e:
+            result["error"] = str(e)
+        
+        result["total_children"] = len(result["child_processes"])
+        result["total_python"] = len(result["python_processes"])
+        result["total_ffmpeg"] = len(result["ffmpeg_processes"])
+        
+        return result
+
     def _is_allowed_static_path(self, path: str) -> bool:
         if not path or not path.startswith("/"):
             return False
@@ -1174,9 +2038,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         return None
 
-    def _json_response(self, data) -> None:
+    def _json_response(self, data, status_code: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -1410,7 +2274,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = ThreadingHTTPServer(("", port), DashboardHandler)
+    use_threaded = os.environ.get("SERVER_THREADED", "1") == "1"
+    server_cls = ThreadingHTTPServer if use_threaded else HTTPServer
+    server = server_cls(("", port), DashboardHandler)
     db_status = "✓ SQLite connected" if _DB_AVAILABLE else "✗ SQLite unavailable"
     print(f"╔══════════════════════════════════════════════════════════╗")
     print(f"║  YouTube Automation Dashboard  →  http://localhost:{port}  ║")
@@ -1423,6 +2289,8 @@ def main() -> None:
     print(f"  /api/db/ypp       →  YPP progress")
     print(f"  /api/db/queue     →  topic queue")
     print(f"  /api/channels     →  YouTube channel management\n")
+    mode = "threaded" if use_threaded else "single-thread"
+    print(f"  Server mode       →  {mode}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -28,6 +28,8 @@ from config import (
     CHANNEL_NAME,
     CROSSFADE_DURATION,
     END_SCREEN_DURATION,
+    FFMPEG_PRESET,
+    FFMPEG_THREADS,
     INTRO_DURATION,
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
@@ -47,7 +49,7 @@ logger = logging.getLogger(__name__)
 _FPS = 24
 _VIDEO_WIDTH = 1920
 _VIDEO_HEIGHT = 1080
-_THREADS = os.cpu_count() or 4
+_THREADS = FFMPEG_THREADS
 
 
 def _resolve_channel_name() -> str:
@@ -76,12 +78,11 @@ def _resolve_channel_name() -> str:
 def _detect_hw_encoder() -> tuple[str, list[str]]:
     """Return (codec, ffmpeg_params) using the fastest available encoder.
 
-    preset=fast gives ~60% smaller files than ultrafast with negligible
-    extra encode time. CRF 23 is libx264's default — still excellent
-    quality for YouTube (which re-encodes everything on ingest anyway).
-    Targets ~6–8 Mbps for 1080p, matching YouTube's own upload guidelines.
+    Preset comes from FFMPEG_PRESET config (defaults: ultrafast on Render,
+    fast elsewhere). CRF 23 keeps quality acceptable; YouTube re-encodes on
+    ingest anyway so ultrafast's slight quality loss is irrelevant.
     """
-    return "libx264", ["-preset", "fast", "-crf", "23"]
+    return "libx264", ["-preset", FFMPEG_PRESET, "-crf", "23"]
 
 
 _HW_CODEC, _HW_PARAMS = _detect_hw_encoder()
@@ -110,7 +111,7 @@ def _ffmpeg_prepare_video(src_path: str, duration: float) -> str:
             f":force_original_aspect_ratio=increase,"
             f"crop={_VIDEO_WIDTH}:{_VIDEO_HEIGHT}"
         ),
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-c:v", "libx264", "-preset", FFMPEG_PRESET, "-crf", "23",
         "-an",
         str(out),
     ]
@@ -486,6 +487,8 @@ def build_video(
             final = final.set_audio(music)
 
     logger.info("Encoding with %s (threads=%d)", _HW_CODEC, _THREADS)
+    # Use temp_audiofile to avoid real-time audio piping (which spawns threads)
+    temp_audiofile = f"{output_path}.temp_audio.m4a"
     final.write_videofile(
         output_path,
         fps=_FPS,
@@ -493,6 +496,9 @@ def build_video(
         audio_codec="aac",
         threads=_THREADS,
         ffmpeg_params=_HW_PARAMS,
+        temp_audiofile=temp_audiofile,
+        remove_temp=True,
+        write_logfile=False,
         logger=None,
     )
     logger.info("Video written to %s", output_path)

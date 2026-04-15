@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: youtube-automation
+    runtime: docker
+    plan: starter  # $7/mo - 512MB RAM, no thread limits
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    startCommand: python server.py
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: DB_PATH
+        value: /data/yt_automation.db
+      - key: AUDIO_DIR
+        value: /data/audio
+      - key: IMAGES_DIR
+        value: /data/images
+      - key: OUTPUT_DIR
+        value: /data/output
+      - key: FFMPEG_THREADS
+        value: 4  # Can use real parallelism on Render
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+    disk:
+      name: youtube-data
+      mountPath: /data
+      sizeGB: 10
+
+  # Cron job: Run scheduler twice daily (10:00 UTC and 18:00 UTC)
+  # Triggers the web service API which has access to the persistent disk
+  - type: cron
+    name: youtube-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    schedule: "0 10,18 * * *"  # 10am and 6pm UTC daily
+    startCommand: python run_scheduler_once.py
+    envVars:
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        value: https://youtube-automation-19fr.onrender.com

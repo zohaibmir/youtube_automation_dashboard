@@ -19,7 +19,7 @@ from moviepy.editor import (
     concatenate_videoclips,
 )
 
-from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, OUTPUT_DIR
+from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, FFMPEG_THREADS, OUTPUT_DIR
 from core.text_renderer import render_caption_overlay, slugify as _slugify
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _FPS = 24          # 24 is plenty for Shorts (saves ~20% encode time vs 30)
 _WIDTH = 1080
 _HEIGHT = 1920
-_THREADS = os.cpu_count() or 4
+_THREADS = FFMPEG_THREADS
 _MAX_DURATION = 59  # YT Shorts limit
 _CAPTION_FONT_SIZE = 60
 _CAPTION_STROKE = 3
@@ -183,6 +183,8 @@ def _build_one_short(
     # Import HW encoder settings from video_builder (detected once at startup)
     from video_builder import _HW_CODEC, _HW_PARAMS
     logger.info("Encoding Short with %s (threads=%d)", _HW_CODEC, _THREADS)
+    # Use temp_audiofile to avoid real-time audio piping (which spawns threads)
+    temp_audiofile = f"{output_path}.temp_audio.m4a"
     final.write_videofile(
         output_path,
         fps=_FPS,
@@ -190,6 +192,9 @@ def _build_one_short(
         audio_codec="aac",
         threads=_THREADS,
         ffmpeg_params=_HW_PARAMS,
+        temp_audiofile=temp_audiofile,
+        remove_temp=True,
+        write_logfile=False,
         logger=None,
     )
     logger.info("Short written to %s (%.1fs)", output_path, final.duration)

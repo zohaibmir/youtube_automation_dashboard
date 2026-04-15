@@ -4,6 +4,7 @@ Single responsibility: authenticate and upload a video + thumbnail
 to YouTube. Supports multiple channels via named token files in tokens/.
 """
 
+import base64
 import json
 import logging
 import os
@@ -25,7 +26,11 @@ _UPLOAD_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 logger = logging.getLogger(__name__)
 
 _BASE_DIR = os.path.dirname(__file__)
-_TOKENS_DIR = os.getenv("YOUTUBE_TOKENS_DIR", os.path.join(_BASE_DIR, "tokens"))
+_PERSISTENT_TOKENS_DIR = "/data/tokens"
+_TOKENS_DIR = os.getenv(
+    "YOUTUBE_TOKENS_DIR",
+    _PERSISTENT_TOKENS_DIR if os.path.isdir("/data") else os.path.join(_BASE_DIR, "tokens")
+)
 _LEGACY_TOKEN = os.path.join(_BASE_DIR, "token.json")
 _CHANNELS_FILE = os.path.join(_TOKENS_DIR, "channels.json")
 
@@ -36,12 +41,106 @@ def _ensure_tokens_dir() -> None:
     os.makedirs(_TOKENS_DIR, exist_ok=True)
 
 
+def _restore_tokens_from_env() -> bool:
+    """Restore token files from environment variables on hosted deployments.
+
+    Reads YOUTUBE_CHANNELS_REGISTRY (base64-encoded channels.json) and
+    YOUTUBE_TOKEN_<SLUG> (base64-encoded token JSON) env vars and writes
+    the corresponding files to _TOKENS_DIR if they are missing.
+    This lets tokens survive redeploys without a persistent disk.
+    Returns True if any files were restored.
+    """
+    restored = False
+
+    registry_b64 = os.getenv("YOUTUBE_CHANNELS_REGISTRY", "").strip()
+    if registry_b64 and not os.path.exists(_CHANNELS_FILE):
+        try:
+            _ensure_tokens_dir()
+            data = base64.b64decode(registry_b64).decode("utf-8")
+            channels = json.loads(data)
+            with open(_CHANNELS_FILE, "w") as f:
+                json.dump(channels, f, indent=2)
+            logger.info("Restored channels.json from YOUTUBE_CHANNELS_REGISTRY env var")
+            restored = True
+        except Exception as e:
+            logger.warning("Failed to restore channels.json from env: %s", e)
+
+    for key, value in os.environ.items():
+        if not key.startswith("YOUTUBE_TOKEN_") or not value.strip():
+            continue
+        slug = key[len("YOUTUBE_TOKEN_"):].lower().replace("_", "-")
+        token_path = os.path.join(_TOKENS_DIR, f"{slug}.json")
+        if not os.path.exists(token_path):
+            try:
+                _ensure_tokens_dir()
+                token_data = base64.b64decode(value.strip()).decode("utf-8")
+                with open(token_path, "w") as f:
+                    f.write(token_data)
+                logger.info("Restored token %s from env var %s", slug, key)
+                restored = True
+            except Exception as e:
+                logger.warning("Failed to restore token %s from env: %s", key, e)
+
+    return restored
+
+
 def _load_channels() -> dict:
     """Load the channel registry. Returns {slug: {name, token_file, channel_id, is_default}}."""
+    _restore_tokens_from_env()
     if os.path.exists(_CHANNELS_FILE):
-        with open(_CHANNELS_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(_CHANNELS_FILE, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            logger.warning("Invalid channels registry format in %s; expected object", _CHANNELS_FILE)
+        except Exception as e:
+            logger.warning("Failed to read channels registry %s: %s", _CHANNELS_FILE, e)
     return {}
+
+
+def _recover_channels_from_token_files() -> dict:
+    """Best-effort recovery when channels.json is missing/corrupt.
+
+    Rebuild channel entries from token JSON files already present in the tokens dir.
+    """
+    _ensure_tokens_dir()
+    recovered: dict = {}
+    try:
+        files = sorted(
+            f for f in os.listdir(_TOKENS_DIR)
+            if f.endswith(".json") and f != "channels.json"
+        )
+    except Exception as e:
+        logger.warning("Could not scan token directory %s: %s", _TOKENS_DIR, e)
+        return {}
+
+    for idx, token_file in enumerate(files):
+        slug = token_file[:-5].strip() or f"channel-{idx + 1}"
+        # Preserve slug as-is except for safety fallback.
+        safe_slug = "".join(c for c in slug if c.isalnum() or c == "-").strip("-") or f"channel-{idx + 1}"
+        if safe_slug in recovered:
+            suffix = 2
+            base = safe_slug
+            while f"{base}-{suffix}" in recovered:
+                suffix += 1
+            safe_slug = f"{base}-{suffix}"
+
+        recovered[safe_slug] = {
+            "name": safe_slug.replace("-", " ").title(),
+            "token_file": token_file,
+            "channel_id": "",
+            "is_default": idx == 0,
+        }
+
+    if recovered:
+        logger.warning(
+            "Recovered %d channel(s) from token files in %s",
+            len(recovered),
+            _TOKENS_DIR,
+        )
+        _save_channels(recovered)
+    return recovered
 
 
 def _save_channels(channels: dict) -> None:
@@ -96,15 +195,19 @@ def list_channels() -> list[dict]:
     """Return all registered channels as a list of dicts."""
     _migrate_legacy_token()
     channels = _load_channels()
+    if not channels:
+        channels = _recover_channels_from_token_files()
     result = []
     for slug, info in channels.items():
+        token_file = info.get("token_file")
+        has_token = bool(token_file) and os.path.exists(os.path.join(_TOKENS_DIR, str(token_file)))
         result.append({
             "slug": slug,
             "name": info.get("name", slug),
             "handle": info.get("handle", ""),
             "channel_id": info.get("channel_id", ""),
             "is_default": info.get("is_default", False),
-            "has_token": os.path.exists(os.path.join(_TOKENS_DIR, info.get("token_file", ""))),
+            "has_token": has_token,
         })
     return result
 
@@ -135,19 +238,32 @@ def set_default_channel(slug: str) -> bool:
 def add_channel(name: str) -> tuple[str, str]:
     """Register a new channel and run OAuth flow.
     Returns (slug, channel_id). Opens browser for auth."""
+    # Run OAuth flow
+    logger.info("Opening browser for YouTube OAuth — channel: %s", name)
+    flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES)
+    creds = flow.run_local_server(port=0)
+
+    return add_channel_from_credentials(name, creds)
+
+
+def add_channel_from_credentials(name: str, creds: Credentials) -> tuple[str, str]:
+    """Register a channel from pre-authorized credentials.
+    Useful for hosted OAuth callback flows where browser auth happens client-side."""
     slug = name.lower().replace(" ", "-").replace("/", "-")
     slug = "".join(c for c in slug if c.isalnum() or c == "-")[:40]
 
     _ensure_tokens_dir()
     channels = _load_channels()
 
+    # Ensure slug uniqueness
+    base_slug = slug or "channel"
+    idx = 2
+    while slug in channels:
+        slug = f"{base_slug}-{idx}"
+        idx += 1
+
     token_file = f"{slug}.json"
     token_path = os.path.join(_TOKENS_DIR, token_file)
-
-    # Run OAuth flow
-    logger.info("Opening browser for YouTube OAuth — channel: %s", name)
-    flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRETS, YOUTUBE_SCOPES)
-    creds = flow.run_local_server(port=0)
 
     # Save token
     with open(token_path, "w") as f:
@@ -190,9 +306,11 @@ def remove_channel(slug: str) -> bool:
     if slug not in channels:
         return False
     info = channels.pop(slug)
-    token_path = os.path.join(_TOKENS_DIR, info.get("token_file", ""))
-    if os.path.exists(token_path):
-        os.remove(token_path)
+    token_file = info.get("token_file")
+    if token_file:
+        token_path = os.path.join(_TOKENS_DIR, str(token_file))
+        if os.path.exists(token_path):
+            os.remove(token_path)
     # If removed channel was default, make the first remaining channel default
     if info.get("is_default") and channels:
         first = next(iter(channels))
@@ -206,17 +324,31 @@ def _get_token_path(channel_slug: str | None = None) -> str:
     channels = _load_channels()
 
     if channel_slug and channel_slug in channels:
-        return os.path.join(_TOKENS_DIR, channels[channel_slug]["token_file"])
+        token_file = channels[channel_slug].get("token_file")
+        if token_file:
+            return os.path.join(_TOKENS_DIR, str(token_file))
+        raise RuntimeError(
+            f"Channel '{channel_slug}' is missing OAuth token metadata. "
+            "Re-connect this channel in Settings -> YouTube Channels."
+        )
 
     # Try default channel
     for slug, info in channels.items():
         if info.get("is_default"):
-            return os.path.join(_TOKENS_DIR, info["token_file"])
+            token_file = info.get("token_file")
+            if token_file:
+                return os.path.join(_TOKENS_DIR, str(token_file))
 
     # Single channel
     if len(channels) == 1:
-        info = next(iter(channels.values()))
-        return os.path.join(_TOKENS_DIR, info["token_file"])
+        only_slug, info = next(iter(channels.items()))
+        token_file = info.get("token_file")
+        if token_file:
+            return os.path.join(_TOKENS_DIR, str(token_file))
+        raise RuntimeError(
+            f"Channel '{only_slug}' is missing OAuth token metadata. "
+            "Re-connect this channel in Settings -> YouTube Channels."
+        )
 
     # Legacy fallback
     if os.path.exists(_LEGACY_TOKEN):
@@ -230,6 +362,18 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
     Falls back to browser OAuth flow if no token exists."""
     token_path = _get_token_path(channel_slug)
     creds = None
+
+    # Resolve the display name: look up which channel record owns this token file
+    _token_basename = os.path.basename(token_path)
+    _resolved_slug = channel_slug
+    if not _resolved_slug:
+        for _s, _info in _load_channels().items():
+            if _info.get("token_file") == _token_basename:
+                _resolved_slug = _info.get("name") or _s
+                break
+        if not _resolved_slug:
+            _resolved_slug = _token_basename.replace(".json", "")
+
     if os.path.exists(token_path):
         # Load with only the upload scope so tokens originally created without
         # youtube.readonly can still refresh without invalid_scope errors.
@@ -239,11 +383,20 @@ def _get_credentials(channel_slug: str | None = None) -> Credentials:
         return creds
 
     if creds and creds.expired and creds.refresh_token:
-        logger.info("Refreshing expired YouTube token for channel...")
-        creds.refresh(Request())
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
-        return creds
+        logger.info("Refreshing expired YouTube token for channel '%s'...", _resolved_slug)
+        try:
+            creds.refresh(Request())
+            with open(token_path, "w") as f:
+                f.write(creds.to_json())
+            return creds
+        except Exception as refresh_error:
+            error_str = str(refresh_error)
+            if "invalid_grant" in error_str.lower():
+                raise RuntimeError(
+                    f"TOKEN_REVOKED:{_resolved_slug}"
+                )
+            else:
+                raise RuntimeError(f"Failed to refresh token for '{_resolved_slug}': {error_str}")
 
     # No valid token — need to add channel first
     raise RuntimeError(
@@ -302,22 +455,25 @@ def upload_video(
     video_id: str = response["id"]
 
     # Thumbnail upload — requires verified channel (1000+ subs)
-    # Skip gracefully if permission denied
-    try:
-        logger.info("Uploading thumbnail: %s", thumbnail_path)
-        youtube.thumbnails().set(
-            videoId=video_id,
-            media_body=MediaFileUpload(thumbnail_path),
-        ).execute()
-        logger.info("Thumbnail uploaded successfully")
-    except HttpError as e:
-        if e.resp.status == 403:
-            logger.warning(
-                "Thumbnail upload skipped — account not yet verified for custom thumbnails "
-                "(need 1000+ subscribers or channel verification). Video still uploaded OK."
-            )
-        else:
-            raise
+    # Skip gracefully if permission denied or no thumbnail provided
+    if thumbnail_path:
+        try:
+            logger.info("Uploading thumbnail: %s", thumbnail_path)
+            youtube.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(thumbnail_path),
+            ).execute()
+            logger.info("Thumbnail uploaded successfully")
+        except HttpError as e:
+            if e.resp.status == 403:
+                logger.warning(
+                    "Thumbnail upload skipped — account not yet verified for custom thumbnails "
+                    "(need 1000+ subscribers or channel verification). Video still uploaded OK."
+                )
+            else:
+                raise
+    else:
+        logger.info("No thumbnail provided — skipping thumbnail upload")
 
     logger.info("Published: https://youtube.com/watch?v=%s", video_id)
     return video_id

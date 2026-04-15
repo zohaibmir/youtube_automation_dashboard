@@ -8,6 +8,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _is_hosted_environment() -> bool:
+    return bool(
+        os.getenv("RENDER")
+        or os.getenv("RENDER_SERVICE_ID")
+        or os.getenv("RENDER_EXTERNAL_URL")
+    )
+
+
+def _storage_root() -> str:
+    configured_root = os.getenv("DATA_ROOT", "").strip()
+    if configured_root:
+        return configured_root
+    if _is_hosted_environment() and os.path.isdir("/data"):
+        return "/data"
+    return ""
+
+
+def _resolve_storage_path(env_name: str, default_name: str) -> str:
+    configured = os.getenv(env_name, "").strip()
+    if configured:
+        candidate = configured
+    else:
+        root = _storage_root()
+        candidate = os.path.join(root, default_name) if root else default_name
+
+    if _is_hosted_environment() and (candidate == "/app" or candidate.startswith("/app/")):
+        root = _storage_root() or "/tmp"
+        suffix = candidate.removeprefix("/app/").strip()
+        candidate = os.path.join(root, suffix) if suffix else root
+
+    return os.path.normpath(candidate)
+
 # ── API Keys ──────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
@@ -21,12 +54,25 @@ CHANNEL_NICHE: str = os.getenv("CHANNEL_NICHE", "politics and religion")
 CHANNEL_LANGUAGE: str = os.getenv("CHANNEL_LANGUAGE", "english")
 CHANNEL_AUDIENCE: str = os.getenv("CHANNEL_AUDIENCE", "global")
 VIDEOS_PER_WEEK: int = int(os.getenv("VIDEOS_PER_WEEK", "5"))
+SCHEDULER_PUBLISH_TIME: str = os.getenv("SCHEDULER_PUBLISH_TIME", "14:00")
+SCHEDULER_PUBLISH_TIMES: str = os.getenv("SCHEDULER_PUBLISH_TIMES", "")
+SCHEDULER_CHANNEL: str | None = os.getenv("SCHEDULER_CHANNEL", "").strip() or None
+# Shorts to generate for scheduler / run-next jobs (0-3)
+SCHEDULER_SHORTS_COUNT: int = int(os.getenv("SCHEDULER_SHORTS_COUNT", "2"))
+# Encoder threads for MoviePy/FFmpeg.
+# On Render (shared 0.1 CPU) default to 1 — extra threads cause context-switch overhead.
+_default_threads = "1" if _is_hosted_environment() else "4"
+FFMPEG_THREADS: int = max(1, int(os.getenv("FFMPEG_THREADS", _default_threads)))
+# FFmpeg encoding preset. On Render use ultrafast — YouTube re-encodes on ingest anyway,
+# so quality loss is irrelevant and encode time drops ~4×.
+_default_preset = "ultrafast" if _is_hosted_environment() else "fast"
+FFMPEG_PRESET: str = os.getenv("FFMPEG_PRESET", _default_preset)
 
 # ── File Paths ────────────────────────────────────────────────────────────────
-DB_PATH: str = os.getenv("DB_PATH", "yt_automation.db")
-AUDIO_DIR: str = os.getenv("AUDIO_DIR", "audio")
-IMAGES_DIR: str = os.getenv("IMAGES_DIR", "images")
-OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "output")
+DB_PATH: str = _resolve_storage_path("DB_PATH", "yt_automation.db")
+AUDIO_DIR: str = _resolve_storage_path("AUDIO_DIR", "audio")
+IMAGES_DIR: str = _resolve_storage_path("IMAGES_DIR", "images")
+OUTPUT_DIR: str = _resolve_storage_path("OUTPUT_DIR", "output")
 
 # ── YouTube Publish Settings ─────────────────────────────────────────────────
 # Exported by the HTML dashboard → Settings → Export .env file
@@ -108,4 +154,5 @@ YOUTUBE_SCOPES: list[str] = [
     "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]

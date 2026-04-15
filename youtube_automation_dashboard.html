@@ -79,6 +79,13 @@ select option{background:var(--bg2)}
 .audio-meta{font-size:10px;color:var(--muted);margin-bottom:5px;line-height:1.5}
 .queue-item{display:flex;align-items:center;gap:8px;padding:9px 11px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;margin-bottom:5px;transition:border-color 0.15s}
 .queue-item:hover{border-color:var(--border2)}
+.qp-list{display:flex;flex-direction:column;gap:6px}
+.qp-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;cursor:grab}
+.qp-item:active{cursor:grabbing}
+.qp-item.drag-over{border-color:var(--accent);background:rgba(124,109,250,0.07)}
+.qp-rank{min-width:22px;font-size:10px;font-weight:700;color:var(--dim)}
+.qp-title{flex:1;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qp-handle{font-size:12px;color:var(--muted);user-select:none}
 .q-num{font-size:10px;font-weight:700;color:var(--dim);min-width:18px}
 .q-info{flex:1;min-width:0}
 .q-title{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -208,6 +215,7 @@ canvas{display:block;width:100%;height:auto}
   <button class="nav-item" onclick="navTo('branding',this)"><span class="nav-icon">&#127912;</span>Branding</button>
   <button class="nav-item" onclick="navTo('health',this)"><span class="nav-icon">&#128138;</span>Channel Health</button>
   <button class="nav-item" onclick="navTo('yt-automation',this)"><span class="nav-icon">&#128640;</span>YT Automation</button>
+  <button class="nav-item" onclick="navTo('voices',this)"><span class="nav-icon">&#128264;&#65039;</span>Voice Test</button>
   <div class="nav-divider"></div>
   <div class="nav-section">Setup</div>
   <button class="nav-item" onclick="navTo('pipeline',this)"><span class="nav-icon">&#9881;&#65039;</span>Pipeline Code</button>
@@ -275,6 +283,13 @@ canvas{display:block;width:100%;height:auto}
 <div id="panel-trending" class="panel active">
   <div class="card">
     <div class="card-title" style="margin-bottom:11px">Channel settings</div>
+    <div style="background:rgba(61,219,160,0.08);border:1px solid rgba(61,219,160,0.2);border-radius:8px;padding:10px;margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px">📺 Working channel</label>
+      <select id="trending-channel-select" onchange="setSelectedChannel(this.value)" style="width:100%;margin-bottom:6px">
+        <option value="">🌐 Default channel</option>
+      </select>
+      <div id="selected-channel-info" style="font-size:10px;color:var(--green);font-weight:600">🌐 Default channel</div>
+    </div>
     <div class="grid2">
       <div>
         <label>Niche</label>
@@ -334,6 +349,17 @@ canvas{display:block;width:100%;height:auto}
       <button class="btn btn-ghost btn-sm" onclick="getTrending('news',this)">&#128240; News</button>
       <button class="btn btn-ghost btn-sm" onclick="getTrending('politics',this)">&#127470;&#127475; Politics</button>
       <button class="btn btn-ghost btn-sm" onclick="getTrending('global',this)">&#127760; Global</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <label for="trend-recency" style="font-size:12px;color:var(--muted);white-space:nowrap">&#128197; Topic recency</label>
+      <select id="trend-recency" onchange="_persistDraftContext()" style="min-width:180px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--text);outline:none">
+        <option value="today" selected>Today / last 24 hours</option>
+        <option value="48h">Last 48 hours</option>
+        <option value="week">Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="any">Any recent viral window</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted)">Use this to force fresher web-search results for Trending and Viral ideas.</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
       <span style="font-size:12px;color:var(--muted);white-space:nowrap">&#9997;&#65039; Your title / topic:</span>
@@ -763,17 +789,28 @@ canvas{display:block;width:100%;height:auto}
     <div class="stat-card"><div class="stat-val" id="q-weeks" style="color:var(--teal)">-</div><div class="stat-lbl">Weeks planned</div></div>
   </div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:10px">Add video</div>
+    <div class="card-title" style="margin-bottom:10px">Add to scheduler queue</div>
+    <div class="info-box" style="margin-bottom:8px;font-size:11px">Topics added here go to the database queue (shown below in Priority list) and can be processed by the scheduler or "Run Next" button.</div>
     <div class="grid2">
       <div><label>Topic</label><input type="text" id="q-topic-input" placeholder="e.g. Pakistan mein stock market guide"/></div>
-      <div><label>Date</label><input type="date" id="q-date-input"/></div>
+      <div><label>Date</label><input type="date" id="q-date-input" style="display:none"/></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="addManualToQueue()">+ Add</button>
       <button class="btn btn-ghost btn-sm" id="gen-plan-btn" onclick="generateFullPlan()"><span id="gen-plan-icon">&#9889;</span> AI: 4-week plan</button>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV()">&#11015; Export CSV</button>
+      <button class="btn btn-success btn-sm" id="sched-run-next-btn" onclick="schedulerRunNext()" title="Dequeue next pending topic and run the full pipeline (same as scheduler)">&#9654; Run Next from Queue</button>
       <button class="btn btn-danger btn-sm" onclick="clearQueue()">Clear all</button>
     </div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:10px">Scheduler Queue Priority</div>
+    <div class="info-box" style="margin-bottom:8px">Drag pending scheduler topics to reorder priority. The top item runs next on scheduler/Run Next.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div id="queue-priority-status" style="font-size:11px;color:var(--muted)">Loading…</div>
+      <button class="btn btn-ghost btn-sm" onclick="loadSchedulerQueuePriority()">↻ Refresh Priority</button>
+    </div>
+    <div id="queue-priority-list" class="qp-list"></div>
   </div>
   <div id="queue-list"></div>
 </div>
@@ -954,6 +991,12 @@ canvas{display:block;width:100%;height:auto}
         <option value="28">Science &amp; Tech (28)</option>
       </select>
     </div>
+  </div>
+  <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+    <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-size:12px;color:var(--text)">
+      <input type="checkbox" id="cfg-auto-upload-youtube" checked oninput="markDirty()"/>
+      Queue Upload button runs pipeline and auto-uploads video + Shorts
+    </label>
   </div>
   <div class="s-budget-row" style="margin-top:8px">
     <div style="flex:1">
@@ -1191,6 +1234,8 @@ canvas{display:block;width:100%;height:auto}
         <select id="stu-video-select" onchange="studioVideoChanged()" style="margin-bottom:0"><option value="">Loading…</option></select>
       </div>
       <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="loadStudioVideos()">&#128260; Refresh</button>
+      <button class="btn btn-sm" style="background:#0b7;color:#fff" id="stu-download-btn" onclick="studioDownloadVideo()" title="Download video to your computer" style="display:none">&#11015; Download</button>
+      <button class="btn btn-danger btn-sm" id="stu-delete-btn" onclick="studioDeleteVideo()" title="Delete selected video from local filesystem" style="display:none">&#128465; Delete</button>
     </div>
     <div id="stu-video-info" style="display:none;padding:10px;background:var(--bg3);border-radius:8px;margin-top:6px">
       <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text)">
@@ -1248,6 +1293,17 @@ canvas{display:block;width:100%;height:auto}
   <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">3. Extract Clips for Shorts / Reels</div>
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
     <div class="info-box" style="margin-bottom:10px">Define time ranges to extract clips. Each clip can be uploaded as a YouTube Short and/or social media Reel. Max 59s for Shorts, 90s for Reels.</div>
+
+    <div style="margin-bottom:10px;padding:10px;background:var(--bg3);border:1px dashed var(--border2);border-radius:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">Already generated reels/shorts</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Use videos from <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/shorts</code>, <code style="background:var(--bg4);padding:1px 4px;border-radius:3px">output/clips</code>, and related folders, without re-extracting clips.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="studioLoadExistingReels()">&#128260; Load Existing Reels</button>
+        <button class="btn btn-sm" onclick="studioUseSelectedReels()">&#9989; Use Selected Reels</button>
+      </div>
+      <div id="stu-existing-reels-status" style="font-size:10px;color:var(--muted);margin-bottom:6px">Click "Load Existing Reels" to pick files.</div>
+      <div id="stu-existing-reels-list" style="max-height:180px;overflow:auto"></div>
+    </div>
 
     <div id="stu-clips-list" style="margin-bottom:10px">
       <!-- clip rows added dynamically -->
@@ -1322,6 +1378,10 @@ canvas{display:block;width:100%;height:auto}
   <!-- Upload Actions -->
   <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Upload to YouTube</div>
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="margin-bottom:10px;max-width:360px">
+      <label>Target Channel</label>
+      <select id="brand-channel-select" style="margin-bottom:0"><option value="">Default channel</option></select>
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
       <button class="btn btn-green btn-sm" onclick="uploadBannerToYT()" id="brand-upload-banner-btn">&#128228; Upload Banner to YouTube</button>
       <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="setChannelTrailer()" id="brand-trailer-btn">&#127910; Set Channel Trailer</button>
@@ -1376,9 +1436,17 @@ canvas{display:block;width:100%;height:auto}
     </div>
   </div>
 
+  <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
+    <div style="min-width:260px;max-width:420px;flex:1">
+      <label>Channel</label>
+      <select id="health-channel-slug-sel" onchange="_healthChannelChanged()" style="margin-bottom:0"><option value="">Default channel</option></select>
+    </div>
+  </div>
+
   <button class="btn btn-primary" onclick="runChannelAudit()" id="health-audit-btn" style="margin-bottom:14px">
     <span id="health-audit-icon">&#128138;</span> Run Full Audit
   </button>
+  <div id="health-audit-error" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(255,90,90,0.08);border:1px solid rgba(255,90,90,0.3);border-radius:8px;font-size:12px;color:var(--text);line-height:1.6"></div>
   <button class="btn btn-danger btn-sm" onclick="fixAllVideos()" id="health-fixall-btn" style="margin-bottom:14px;display:none">
     &#128295; Fix All Issues
   </button>
@@ -2077,29 +2145,56 @@ services:
         </select>
       </div>
       <div id="edge-voice-section">
-        <label>Edge Voice</label>
+        <label>Edge Voice (47 available)</label>
         <select id="cfg-edge-voice" onchange="markDirty()" style="margin-bottom:0">
-          <optgroup label="Hindi">
-            <option value="hi-IN-MadhurNeural">Madhur &#128104; Hindi male (warm)</option>
-            <option value="hi-IN-SwaraNeural">Swara &#128105; Hindi female</option>
+          <optgroup label="★ RECOMMENDED">
+            <option value="en-US-ChristopherNeural" selected>Christopher (US) - Authoritative, journalism/politics</option>
+            <option value="en-US-BrianNeural">Brian (US) - Professional, documentary</option>
+            <option value="en-US-GuyNeural">Guy (US) - Deep, serious voice</option>
+            <option value="en-GB-RyanNeural">Ryan (UK) - British professional</option>
+            <option value="en-IN-PrabhatNeural">Prabhat (India) - Indian English male</option>
+            <option value="en-US-AriaNeural">Aria (US) - Female professional</option>
           </optgroup>
-          <optgroup label="Urdu">
-            <option value="ur-PK-AsadNeural">Asad &#128104; Urdu male (clear)</option>
-            <option value="ur-PK-UzmaNeural">Uzma &#128105; Urdu female</option>
+          <optgroup label="English (United States)">
+            <option value="en-US-AnaNeural">Ana</option>
+            <option value="en-US-AndrewNeural">Andrew</option>
+            <option value="en-US-AvaNeural">Ava</option>
+            <option value="en-US-EmmaNeural">Emma</option>
+            <option value="en-US-EricNeural">Eric</option>
+            <option value="en-US-JennyNeural">Jenny</option>
+            <option value="en-US-MichelleNeural">Michelle</option>
+            <option value="en-US-RogerNeural">Roger</option>
+            <option value="en-US-SteffanNeural">Steffan</option>
           </optgroup>
-          <optgroup label="English (Indian)">
-            <option value="en-IN-PrabhatNeural">Prabhat &#128104; Indian English male</option>
-            <option value="en-IN-NeerjaNeural">Neerja &#128105; Indian English female</option>
+          <optgroup label="English (United Kingdom)">
+            <option value="en-GB-LibbyNeural">Libby</option>
+            <option value="en-GB-MaisieNeural">Maisie</option>
+            <option value="en-GB-SoniaNeural">Sonia</option>
+            <option value="en-GB-ThomasNeural">Thomas</option>
           </optgroup>
-          <optgroup label="English (US/UK)">
-            <option value="en-US-ChristopherNeural">Christopher &#128104; US English male (documentary)</option>
-            <option value="en-US-GuyNeural">Guy &#128104; US English male</option>
-            <option value="en-US-JennyNeural">Jenny &#128105; US English female</option>
-            <option value="en-GB-RyanNeural">Ryan &#128104; British male</option>
+          <optgroup label="English (India)">
+            <option value="en-IN-NeerjaNeural">Neerja (Female)</option>
           </optgroup>
-          <optgroup label="Arabic">
-            <option value="ar-SA-HamedNeural">Hamed &#128104; Arabic male</option>
-            <option value="ar-SA-ZariyahNeural">Zariyah &#128105; Arabic female</option>
+          <optgroup label="English (Other Regions)">
+            <option value="en-AU-NatashaNeural">Natasha (Australia)</option>
+            <option value="en-CA-ClaraNeural">Clara (Canada)</option>
+            <option value="en-CA-LiamNeural">Liam (Canada)</option>
+            <option value="en-IE-ConnorNeural">Connor (Ireland)</option>
+            <option value="en-IE-EmilyNeural">Emily (Ireland)</option>
+            <option value="en-NZ-MitchellNeural">Mitchell (New Zealand)</option>
+            <option value="en-NZ-MollyNeural">Molly (New Zealand)</option>
+            <option value="en-SG-LunaNeural">Luna (Singapore)</option>
+            <option value="en-SG-WayneNeural">Wayne (Singapore)</option>
+            <option value="en-ZA-LeahNeural">Leah (South Africa)</option>
+            <option value="en-ZA-LukeNeural">Luke (South Africa)</option>
+          </optgroup>
+          <optgroup label="Other Languages (Non-English)">
+            <option value="hi-IN-MadhurNeural">Madhur (Hindi male)</option>
+            <option value="hi-IN-SwaraNeural">Swara (Hindi female)</option>
+            <option value="ur-PK-AsadNeural">Asad (Urdu male)</option>
+            <option value="ur-PK-UzmaNeural">Uzma (Urdu female)</option>
+            <option value="ar-SA-HamedNeural">Hamed (Arabic male)</option>
+            <option value="ar-SA-ZariyahNeural">Zariyah (Arabic female)</option>
           </optgroup>
         </select>
       </div>
@@ -2697,6 +2792,81 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 </div>
 </div>
 
+<!-- ===== VOICE TEST ===== -->
+<div id="panel-voices" class="panel">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="font-size:22px">&#128264;&#65039;</div>
+    <div>
+      <div style="font-size:15px;font-weight:800;color:var(--text)">Voice Test</div>
+      <div style="font-size:11px;color:var(--muted)">Preview all available voices in 4 languages. Test voice quality before setting channel or video defaults.</div>
+    </div>
+  </div>
+
+  <div id="voices-loading" style="text-align:center;padding:30px;color:var(--muted)">Loading voice samples...</div>
+  
+  <div id="voices-container" style="display:none">
+    <!-- Will be populated by JavaScript -->
+  </div>
+
+  </div>
+
+  <script>
+  var voicesSamplesLoaded = false;
+  
+  async function loadVoiceSamples(){
+    if(voicesSamplesLoaded) return;
+    voicesSamplesLoaded = true;
+    
+    try{
+      const res = await fetch('/api/voices/samples');
+      const data = await res.json();
+      if(!data.ok || !data.voices){
+        document.getElementById('voices-loading').textContent = 'No voice samples available';
+        return;
+      }
+      
+      const container = document.getElementById('voices-container');
+      const langs = ['english', 'hindi', 'urdu', 'hinglish'];
+      const langLabels = {
+        'english': '🇺🇸 English',
+        'hindi': '🇮🇳 Hindi',
+        'urdu': '🇵🇰 Urdu',
+        'hinglish': '🇮🇳 Hinglish (Hindi+English)'
+      };
+      
+      let html = '';
+      for(const lang of langs){
+        if(!data.voices[lang]) continue;
+        html += `<div style="margin-bottom:20px">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">${langLabels[lang]}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">`;
+        
+        for(const voice of data.voices[lang]){
+          html += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div style="font-weight:700;font-size:12px;color:var(--text)">${voice.name}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">ID: ${voice.voice_id}</div>
+            </div>
+            <audio controls style="width:100%;height:28px" controlsList="nodownload">
+              <source src="${voice.url}" type="audio/mpeg">
+            </audio>
+          </div>`;
+        }
+        
+        html += '</div></div>';
+      }
+      
+      container.innerHTML = html;
+      document.getElementById('voices-loading').style.display = 'none';
+      container.style.display = 'block';
+    }catch(e){
+      document.getElementById('voices-loading').textContent = 'Error loading voice samples: ' + e.message;
+    }
+  }
+  </script>
+
+</div>
+
 </div>
 
 </div></div>
@@ -2792,8 +2962,10 @@ function navTo(name,el){
   if(el)el.classList.add('active');
   updatePipelineBar();
   if(name==='studio')   loadStudioVideos();
+  if(name==='queue')    loadSchedulerQueuePriority();
   if(name==='branding') loadBrandingAssets();
   if(name==='health')   runChannelAudit();
+  if(name==='voices')   loadVoiceSamples();
 }
 var _pipelineOrder=['trending','script','seo','thumbnail','queue'];
 
@@ -2962,6 +3134,8 @@ function copyVal(id,btn){
 function getNiche(){return document.getElementById('cfg-niche').value;}
 function getAud(){return document.getElementById('cfg-audience').value;}
 function getLang(){return document.getElementById('cfg-lang').value;}
+function getScriptDuration(){return (document.getElementById('sc-dur')||{value:'6-8 minutes detailed and engaging'}).value||'6-8 minutes detailed and engaging';}
+function getCurrentPipelineLanguage(){return getLang()||selectedChannelLanguage||'english';}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function parseJSON(raw,br){
   var o=br==='['?'[':'{',c=br==='['?']':'}';
@@ -2987,9 +3161,151 @@ async function fetchJsonSafe(url, opts){
   return data;
 }
 
+function _setInlineError(containerId, message){
+  var el=document.getElementById(containerId);
+  if(!el)return;
+  el.innerHTML='<div style="font-size:11px;color:var(--red);padding:8px;border:1px solid rgba(255,91,91,.35);border-radius:6px;background:rgba(255,91,91,.08)">'+esc(message)+'</div>';
+}
+
+function _isAutoUploadEnabled(){
+  var cb=document.getElementById('cfg-auto-upload-youtube');
+  return !!(cb&&cb.checked);
+}
+
+function _channelDisplayName(slug){
+  if(!slug)return 'Default';
+  var ch=(_ytChannels||[]).find(function(c){return c.slug===slug;});
+  return ch?(ch.name||ch.slug):slug;
+}
+
+function _persistDraftContext(){
+  var draft={
+    selectedChannelSlug:selectedChannelSlug||'',
+    selectedChannelLanguage:selectedChannelLanguage||'english',
+    trendRecency:(document.getElementById('trend-recency')||{}).value||'today',
+    trendData:Array.isArray(trendData)?trendData:[],
+    trendCtxHtml:(document.getElementById('trend-ctx')||{}).innerHTML||'',
+    seoAutoContext:_seoAutoContext||{script:'',topic:''},
+    scriptTopic:(document.getElementById('sc-topic')||{}).value||'',
+    scriptGuidance:(document.getElementById('sc-guidance')||{}).value||'',
+    scriptContext:(document.getElementById('sc-ctx')||{}).value||'',
+    scriptText:(document.getElementById('sc-text')||{}).textContent||'',
+    scriptMode:scriptMode||'ai',
+    language:getLang(),
+    durationHint:getScriptDuration()
+  };
+  _dbSave('draft_context',draft);
+}
+
+function _restoreDraftContext(draft){
+  if(!draft||typeof draft!=='object')return;
+  if(draft.trendRecency){
+    var recencyEl=document.getElementById('trend-recency');
+    if(recencyEl)recencyEl.value=draft.trendRecency;
+  }
+  if(draft.language){
+    var langEl=document.getElementById('cfg-lang');
+    if(langEl)langEl.value=draft.language;
+  }
+  if(draft.durationHint){
+    var durEl=document.getElementById('sc-dur');
+    if(durEl)durEl.value=draft.durationHint;
+  }
+  if(draft.scriptMode&&(draft.scriptMode==='ai'||draft.scriptMode==='hybrid')){
+    setScriptMode(draft.scriptMode);
+  }
+  if(draft.scriptTopic){document.getElementById('sc-topic').value=draft.scriptTopic;}
+  if(draft.scriptGuidance){document.getElementById('sc-guidance').value=draft.scriptGuidance;}
+  if(draft.scriptContext){document.getElementById('sc-ctx').value=draft.scriptContext;}
+  if(draft.scriptText){
+    document.getElementById('sc-text').textContent=draft.scriptText;
+    document.getElementById('sc-out').style.display='block';
+  }
+  if(draft.seoAutoContext&&typeof draft.seoAutoContext==='object'){
+    _seoAutoContext=draft.seoAutoContext;
+  }
+  if(Array.isArray(draft.trendData)&&draft.trendData.length){
+    trendData=draft.trendData;
+    renderTrends(trendData);
+    if(draft.trendCtxHtml){
+      document.getElementById('trend-ctx').innerHTML=draft.trendCtxHtml;
+    }
+    document.getElementById('trend-out').style.display='block';
+  }
+  if(typeof draft.selectedChannelSlug==='string'){
+    setSelectedChannel(draft.selectedChannelSlug);
+  }
+}
+
 // ===== TRENDING (with web search) =====
 var trendData=[];
 var _trendActiveBtn=null;
+var selectedChannelSlug=''; // Track which channel is being used for this session
+var selectedChannelLanguage='english'; // Display language for that channel
+
+function _getDefaultConnectedChannelSlug(){
+  if(!_ytChannels||!_ytChannels.length)return '';
+  var def=_ytChannels.find(function(c){return c.is_default&&c.has_token;});
+  if(def)return def.slug;
+  var any=_ytChannels.find(function(c){return c.has_token;});
+  return any?any.slug:'';
+}
+
+function _resolveValidChannelSlug(preferredSlug, requireToken){
+  var slug=preferredSlug||'';
+  var matcher=function(c){
+    return c.slug===slug&&(!requireToken||c.has_token);
+  };
+  if(slug&&_ytChannels&&_ytChannels.some(matcher))return slug;
+  slug=selectedChannelSlug||'';
+  matcher=function(c){
+    return c.slug===slug&&(!requireToken||c.has_token);
+  };
+  if(slug&&_ytChannels&&_ytChannels.some(matcher))return slug;
+  return requireToken?_getDefaultConnectedChannelSlug():'';
+}
+
+function getTrendRecency(){
+  var el=document.getElementById('trend-recency');
+  return (el&&el.value)||'today';
+}
+
+function getTrendRecencyMeta(){
+  var recency=getTrendRecency();
+  if(recency==='48h')return {label:'last 48 hours', searchSuffix:'past 48 hours latest', promptHint:'Focus heavily on the last 48 hours.'};
+  if(recency==='week')return {label:'last 7 days', searchSuffix:'past week latest', promptHint:'Focus on events from the last 7 days only unless absolutely necessary.'};
+  if(recency==='month')return {label:'last 30 days', searchSuffix:'past month recent', promptHint:'Prefer events from the last 30 days, weighted toward the newest developments.'};
+  if(recency==='any')return {label:'recent viral window', searchSuffix:'recent latest trending', promptHint:'Prioritize the freshest high-interest items you can find.'};
+  return {label:'today / last 24 hours', searchSuffix:'today last 24 hours latest', promptHint:'Focus on today and the last 24 hours first.'};
+}
+
+function setSelectedChannel(slug) {
+  selectedChannelSlug = slug;
+  // Find the channel and get its niche (which determines language style)
+  var ch = _ytChannels.find(function(c) { return c.slug === slug; });
+  if (ch) {
+    // Derive language from channel niche/config
+    // For now, use global CHANNEL_LANGUAGE setting
+    // In future, could store language per channel
+    var langSelect = document.getElementById('cfg-lang');
+    if (langSelect) {
+      var langText = langSelect.options[langSelect.selectedIndex].text;
+      selectedChannelLanguage = langSelect.value || 'english';
+      var displayEl = document.getElementById('selected-channel-info');
+      if (displayEl) {
+        displayEl.textContent = '✓ Using: ' + ch.name + ' (' + langText + ')';
+      }
+    }
+  } else if (slug === '') {
+    selectedChannelSlug = '';
+    var displayEl = document.getElementById('selected-channel-info');
+    if (displayEl) {
+      displayEl.textContent = '🌐 Default channel';
+    }
+  }
+  _persistDraftContext();
+}
+
 async function getTrending(filter,btnEl){
   filter=filter||'live';
   // Show loading on the clicked button, reset previous
@@ -3004,10 +3320,11 @@ async function getTrending(filter,btnEl){
   }
 
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var recencyMeta=getTrendRecencyMeta();
   var searchQuery, fn, typeHint;
   if(filter==='viral'){
     fn='Viral, high-shock, emotionally charged topics — maximum click-through for global audience.';
-    searchQuery='viral YouTube trending topics politics religion world news March 2026';
+    searchQuery='viral YouTube trending topics politics religion world news '+recencyMeta.searchSuffix;
     typeHint='Viral';
   }else if(filter==='evergreen'){
     fn='Evergreen long-tail topics that get consistent search traffic year-round.';
@@ -3015,25 +3332,26 @@ async function getTrending(filter,btnEl){
     typeHint='Evergreen';
   }else if(filter==='news'){
     fn='Breaking news and current events this week — global politics, religion, geopolitics.';
-    searchQuery='latest world news politics religion geopolitics March 2026 trending';
+    searchQuery='latest world news politics religion geopolitics '+recencyMeta.searchSuffix;
     typeHint='News';
   }else if(filter==='politics'){
     fn='Politics, geopolitics, elections, wars, world leaders — high-engagement global controversies.';
-    searchQuery='world politics geopolitics elections war trending YouTube March 2026';
+    searchQuery='world politics geopolitics elections war trending YouTube '+recencyMeta.searchSuffix;
     typeHint='Politics';
   }else if(filter==='global'){
     fn='Global trending events — wars, economy, religion, AI, world leaders — that worldwide audience is watching.';
-    searchQuery='global news world events trending viral politics religion March 2026';
+    searchQuery='global news world events trending viral politics religion '+recencyMeta.searchSuffix;
     typeHint='Global';
   }else{
     fn='Most watched topics on YouTube right now globally — politics, religion, current affairs.';
-    searchQuery='trending YouTube worldwide politics religion viral March 2026';
+    searchQuery='trending YouTube worldwide politics religion viral '+recencyMeta.searchSuffix;
     typeHint='Trending';
   }
 
   var prompt=
     'TODAY is '+today+'. You MUST use the web_search tool. Do NOT use training data.\'s '
     +'Search RIGHT NOW for: "'+searchQuery+'"\n'
+    +'Time filter: '+recencyMeta.label+'. '+recencyMeta.promptHint+'\n'
     +'Then generate 8 YouTube video ideas for a '+getNiche()+' channel.\n'
     +'Audience: '+getAud()+'. Language: '+getLang()+'.\n'
     +'Focus: '+fn+'\n'
@@ -3056,9 +3374,10 @@ async function getTrending(filter,btnEl){
   try{
     trendData=parseJSON(raw,'[');
     var ctx=document.getElementById('trend-ctx');
-    ctx.innerHTML='<strong>&#128269; Web search used — '+filter.toUpperCase()+'</strong> &mdash; results grounded in real search data as of '+today+'.';
+    ctx.innerHTML='<strong>&#128269; Web search used — '+filter.toUpperCase()+'</strong> &mdash; recency: <strong>'+recencyMeta.label+'</strong> &mdash; results grounded in real search data as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
+    _persistDraftContext();
   }catch(e){alert('Could not parse topics. Try again.');console.error(e,raw);}
 }
 
@@ -3072,10 +3391,12 @@ async function getCustomTrending(){
   btn.innerHTML='<span class="spinner"></span> Searching...';
 
   var today=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  var recencyMeta=getTrendRecencyMeta();
   var prompt=
     'TODAY is '+today+'. You MUST use the web_search tool. Do NOT use training data.\n'
     +'The user wants to make a YouTube video about: "'+customTitle+'"\n'
-    +'Search RIGHT NOW for: "'+customTitle+' 2026 YouTube"\n'
+    +'Search RIGHT NOW for: "'+customTitle+' '+recencyMeta.searchSuffix+' YouTube"\n'
+    +'Time filter: '+recencyMeta.label+'. '+recencyMeta.promptHint+'\n'
     +'Then generate 8 YouTube video title & content ideas for a '+getNiche()+' channel, all based on or inspired by this topic.\n'
     +'Audience: '+getAud()+'. Language: '+getLang()+'.\n'
     +'Include the user\'s exact title as idea #1, then generate 7 compelling variations.\n'
@@ -3093,9 +3414,10 @@ async function getCustomTrending(){
   try{
     trendData=parseJSON(raw,'[');
     var ctx=document.getElementById('trend-ctx');
-    ctx.innerHTML='<strong>&#9997;&#65039; Custom topic: &ldquo;'+esc(customTitle)+'&rdquo;</strong> &mdash; 8 ideas generated via live web search as of '+today+'.';
+    ctx.innerHTML='<strong>&#9997;&#65039; Custom topic: &ldquo;'+esc(customTitle)+'&rdquo;</strong> &mdash; recency: <strong>'+recencyMeta.label+'</strong> &mdash; 8 ideas generated via live web search as of '+today+'.';
     renderTrends(trendData);
     document.getElementById('trend-out').style.display='block';
+    _persistDraftContext();
   }catch(e){alert('Could not parse topics. Try again.');console.error(e,raw);}
 }
 
@@ -3116,6 +3438,30 @@ function renderTrends(data){
         '<span class="tag t-accent">CPM '+esc(t.cpm_range)+'</span>'+
       '</div>'+
       '<div class="trend-why">'+esc(t.why_now)+'</div>'+
+      '<div style="background:var(--bg3);padding:8px;border-radius:5px;margin-bottom:8px">'+
+        '<label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">🔊 Voice (optional)</label>'+
+        '<select id="trend-voice-'+i+'" style="width:100%;font-size:11px">'+
+          '<option value="">🌐 Use channel default</option>'+
+          '<optgroup label="🇺🇸 English">'+
+            '<option value="en-US-ChristopherNeural">Christopher (Documentary)</option>'+
+            '<option value="en-US-BrianNeural">Brian (Professional)</option>'+
+            '<option value="en-US-GuyNeural">Guy (Deep voice)</option>'+
+            '<option value="en-GB-RyanNeural">Ryan (British)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇮🇳 Hindi">'+
+            '<option value="hi-IN-MadhurNeural">Madhur (Male)</option>'+
+            '<option value="hi-IN-SwaraNeural">Swara (Female)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇵🇰 Urdu">'+
+            '<option value="ur-PK-AsadNeural">Asad (Male)</option>'+
+            '<option value="ur-PK-UzmaNeural">Uzma (Female)</option>'+
+          '</optgroup>'+
+          '<optgroup label="🇮🇳 Hinglish">'+
+            '<option value="en-IN-PrabhatNeural">Prabhat (Male)</option>'+
+            '<option value="en-IN-NeerjaNeural">Neerja (Female)</option>'+
+          '</optgroup>'+
+        '</select>'+
+      '</div>'+
       '<div class="trend-action">'+
         '<button class="btn btn-primary btn-sm" onclick="useForScript('+i+')">&#9997;&#65039; Script</button>'+
         '<button class="btn btn-ghost btn-sm" onclick="useForSEO('+i+')">&#128269; SEO</button>'+
@@ -3125,8 +3471,14 @@ function renderTrends(data){
   });
 }
 
-function useForScript(i){document.getElementById('sc-topic').value=trendData[i].title;navTo('script',document.querySelectorAll('.nav-item')[1]);}
-function addTrendToQueue(i,btn){addQueueItem(trendData[i].title,trendData[i].type);if(btn){btn.textContent='&#10003; Added';btn.disabled=true;}}
+function useForScript(i){document.getElementById('sc-topic').value=trendData[i].title;_persistDraftContext();navTo('script',document.querySelectorAll('.nav-item')[1]);}
+function addTrendToQueue(i,btn){
+  var voiceId=(document.getElementById('trend-voice-'+i)||{}).value||'';
+  var meta=voiceId?{voice_id:voiceId}:{};
+  if(selectedChannelSlug){meta.channel_slug=selectedChannelSlug;}
+  addQueueItem(trendData[i].title,trendData[i].type,meta);
+  if(btn){btn.textContent='&#10003; Added';btn.disabled=true;}
+}
 function addAllToQueue(){trendData.forEach(function(t){addQueueItem(t.title,t.type);});alert(trendData.length+' topics added!');}
 function copyTrends(btn){navigator.clipboard.writeText(trendData.map(function(t){return t.title;}).join('\n'));if(btn){var o=btn.textContent;btn.textContent='Copied!';setTimeout(function(){btn.textContent=o;},1500);}}
 
@@ -3199,6 +3551,7 @@ async function writeScript(){
     document.getElementById('sc-out').style.display='block';
     // Store for SEO auto-context (does not require textarea to be visible)
     _seoAutoContext={script:s,topic:topic};
+    _persistDraftContext();
   }
   setBtn('sc-btn','sc-icon','&#9997;&#65039;',false);
 }
@@ -3207,7 +3560,7 @@ async function writeHook(){
   var t=document.getElementById('sc-topic').value.trim();if(!t){alert('Enter topic first.');return;}
   setBtn('hook-btn','hook-icon','&#9889;',true);
   var r=await claude('Write ONLY the 30-second opening hook for a '+getAud()+' YouTube video: "'+t+'". Language: '+getLang()+'. Make it impossible to stop. Just the hook, nothing else.',400,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('hook-btn','hook-icon','&#9889;',false);
 }
 
@@ -3215,7 +3568,7 @@ async function writeThumbnail(){
   var t=document.getElementById('sc-topic').value.trim();if(!t){alert('Enter topic first.');return;}
   setBtn('thumb-btn','thumb-icon','&#128444;&#65039;',true);
   var r=await claude('Give 3 thumbnail text options for a '+getAud()+' YouTube video: "'+t+'". Each: 5-7 words ALL CAPS, emotional. Numbered list only.',300,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('thumb-btn','thumb-icon','&#128444;&#65039;',false);
 }
 
@@ -3224,7 +3577,7 @@ async function writeShortScript(){
   setBtn('short-btn','short-icon','&#9654;',true);
   var r=await claude('Write a 60-second YouTube Short script about: "'+t+'". Audience: '+getAud()+'. Language: '+getLang()+
     '. Format: [HOOK 0:00] [MAIN POINT 0:08] [PROOF/STAT 0:25] [CTA 0:50]. Keep it punchy - this is for Shorts. No fluff.',600,false,_HAIKU);
-  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';}
+  if(r){document.getElementById('sc-text').textContent=r;document.getElementById('sc-out').style.display='block';_persistDraftContext();}
   setBtn('short-btn','short-icon','&#9654;',false);
 }
 
@@ -3244,6 +3597,7 @@ function sendToSEO(){
     preview='No topic yet — SEO will use your channel niche: '+getNiche();
   }
   _seoAutoContext={script:script,topic:topic};
+  _persistDraftContext();
   _showSeoContext(source,preview);
   navTo('seo',document.querySelectorAll('.nav-item')[2]);
   // Auto-generate immediately
@@ -3254,6 +3608,7 @@ function useForSEO(i){
   var t=trendData[i];
   var context='Topic: "'+t.title+'"\nHook: '+t.hook+'\nWhy now: '+t.why_now+'\nType: '+t.type+'\nAudience: '+getAud()+'\nNiche: '+getNiche();
   _seoAutoContext={script:context,topic:t.title};
+  _persistDraftContext();
   _showSeoContext('Trending: "'+t.title+'"','Hook: '+t.hook.slice(0,100));
   navTo('seo',document.querySelectorAll('.nav-item')[2]);
   setTimeout(generateSEO,80);
@@ -3264,8 +3619,9 @@ function addScriptToQueue(){
   var scriptText=(document.getElementById('sc-text').textContent||'').trim();
   var guidance=(document.getElementById('sc-guidance').value||'').trim();
   var hasSEO=(document.getElementById('seo-out').style.display!=='none');
-  var meta={hasScript:!!scriptText, scriptText:scriptText};
+  var meta={hasScript:!!scriptText, scriptText:scriptText, language:getCurrentPipelineLanguage(), duration_hint:getScriptDuration()};
   if(guidance)meta.guidance=guidance;
+  if(selectedChannelSlug)meta.channel_slug=selectedChannelSlug;
   if(hasSEO){
     var titles=(document.getElementById('seo-titles').textContent||'').split('\n');
     meta.hasSEO=true;
@@ -3319,6 +3675,8 @@ async function generateSEO(){
 
 // ===== QUEUE =====
 var queue=[];
+var _schedPending=[];
+var _schedDragId=null;
 
 function addQueueItem(title,type,meta){
   type=type||'Planned';
@@ -3332,17 +3690,33 @@ function addQueueItem(title,type,meta){
     scriptText:meta.scriptText||'',
     seoTitle:meta.seoTitle||'',seoDescription:meta.seoDescription||'',
     seoTags:meta.seoTags||'',thumbDataUrl:meta.thumbDataUrl||'',
+    voice_id:meta.voice_id||'',
+    channel_slug:meta.channel_slug||selectedChannelSlug||'',
+    language:meta.language||getCurrentPipelineLanguage(),
+    duration_hint:meta.duration_hint||getScriptDuration(),
     hasScript:meta.hasScript||false,hasSEO:meta.hasSEO||false,hasThumb:meta.hasThumb||false
   });
   saveQ();renderQueue();
 }
 function addManualToQueue(){
   var t=document.getElementById('q-topic-input').value.trim();
-  var d=document.getElementById('q-date-input').value;
   if(!t){alert('Enter a topic.');return;}
-  queue.push({id:Date.now(),title:t,type:'Manual',date:d||new Date().toISOString().slice(0,10),status:'pending'});
-  document.getElementById('q-topic-input').value='';
-  saveQ();renderQueue();
+  var btn=event.target;
+  if(btn){btn.disabled=true;btn.textContent='Adding…';}
+  fetchJsonSafe('/api/queue/add',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({topic:t,type:'Manual'})
+  }).then(function(d){
+    if(!d||!d.ok){throw new Error((d&&d.error)||'add failed');}
+    document.getElementById('q-topic-input').value='';
+    loadSchedulerQueuePriority();
+    alert('✓ Topic added to queue ('+d.pending+' pending)');
+    if(btn){btn.disabled=false;btn.textContent='+ Add';}
+  }).catch(function(err){
+    alert('Failed to add: '+(err.message||err));
+    if(btn){btn.disabled=false;btn.textContent='+ Add';}
+  });
 }
 async function generateFullPlan(){
   setBtn('gen-plan-btn','gen-plan-icon','&#9889;',true);
@@ -3358,7 +3732,9 @@ async function generateFullPlan(){
     var today=new Date();
     plan.forEach(function(item){
       var d=new Date(today);d.setDate(d.getDate()+(item.day_offset||0));
-      queue.push({id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending'});
+      var qItem={id:Date.now()+Math.random(),title:item.title,type:item.type||'Planned',date:d.toISOString().slice(0,10),status:'pending',language:getCurrentPipelineLanguage(),duration_hint:getScriptDuration()};
+      if(selectedChannelSlug){qItem.channel_slug=selectedChannelSlug;}
+      queue.push(qItem);
     });
     saveQ();renderQueue();
   }catch(e){alert('Error. Try again.');}
@@ -3368,6 +3744,120 @@ function removeQItem(id){queue=queue.filter(function(q){return q.id!==id;});save
 function markQDone(id){var i=queue.find(function(q){return q.id===id;});if(i)i.status='done';saveQ();renderQueue();}
 function clearQueue(){if(confirm('Clear all?')){queue=[];saveQ();renderQueue();}}
 function saveQ(){_dbSave('queue_data',queue);}
+
+function schedulerRunNext(){
+  var btn=document.getElementById('sched-run-next-btn');
+  if(btn){btn.disabled=true;btn.textContent='Starting…';}
+  fetchJsonSafe('/api/scheduler/run-next',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})
+    .then(function(data){
+      if(data&&data.ok){
+        _setInlineError('sched-run-next-btn','',false);
+        alert('Pipeline started for: '+data.topic);
+        loadPipelineStatus();
+        loadSchedulerQueuePriority();
+      } else {
+        var msg=(data&&data.error)||'Failed to start';
+        alert('Error: '+msg);
+        if(btn){btn.disabled=false;btn.textContent='\u25B6 Run Next from Queue';}
+      }
+    })
+    .catch(function(err){
+      alert('Error: '+err.message||err);
+      if(btn){btn.disabled=false;btn.textContent='\u25B6 Run Next from Queue';}
+    });
+}
+
+function loadSchedulerQueuePriority(){
+  var statusEl=document.getElementById('queue-priority-status');
+  if(statusEl){statusEl.textContent='Loading…';}
+  fetchJsonSafe('/api/queue/pending',{cache:'no-store'})
+    .then(function(d){
+      if(!d||!d.ok){throw new Error((d&&d.error)||'failed to load scheduler queue');}
+      _schedPending=Array.isArray(d.items)?d.items:[];
+      renderSchedulerQueuePriority();
+    })
+    .catch(function(err){
+      if(statusEl){statusEl.textContent='Failed: '+(err.message||err);}
+      var list=document.getElementById('queue-priority-list');
+      if(list){list.innerHTML='';}
+    });
+}
+
+function renderSchedulerQueuePriority(){
+  var list=document.getElementById('queue-priority-list');
+  var statusEl=document.getElementById('queue-priority-status');
+  if(!list){return;}
+  list.innerHTML='';
+  if(!_schedPending.length){
+    if(statusEl){statusEl.textContent='No pending scheduler topics.';}
+    list.innerHTML='<div style="font-size:11px;color:var(--muted);padding:10px;background:var(--bg3);border-radius:7px;border:1px solid var(--border)">Queue is empty.</div>';
+    return;
+  }
+  if(statusEl){statusEl.textContent='Pending topics: '+_schedPending.length;}
+  _schedPending.forEach(function(item, idx){
+    var row=document.createElement('div');
+    row.className='qp-item';
+    row.setAttribute('draggable','true');
+    row.dataset.id=String(item.id);
+    row.innerHTML='<span class="qp-handle">☰</span><span class="qp-rank">#'+(idx+1)+'</span><span class="qp-title">'+esc(item.topic||'')+'</span><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSchedulerQueueItem('+item.id+')" style="padding:3px 7px;margin-left:auto" title="Delete">&#10005;</button>';
+    row.addEventListener('dragstart', function(){
+      _schedDragId=String(item.id);
+    });
+    row.addEventListener('dragover', function(ev){
+      ev.preventDefault();
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', function(){
+      row.classList.remove('drag-over');
+    });
+    row.addEventListener('drop', function(ev){
+      ev.preventDefault();
+      row.classList.remove('drag-over');
+      if(!_schedDragId){return;}
+      var fromIdx=_schedPending.findIndex(function(x){return String(x.id)===String(_schedDragId);});
+      var toIdx=_schedPending.findIndex(function(x){return String(x.id)===String(item.id);});
+      if(fromIdx<0||toIdx<0||fromIdx===toIdx){return;}
+      var moved=_schedPending.splice(fromIdx,1)[0];
+      _schedPending.splice(toIdx,0,moved);
+      renderSchedulerQueuePriority();
+      saveSchedulerQueuePriority();
+    });
+    list.appendChild(row);
+  });
+}
+
+function saveSchedulerQueuePriority(){
+  var statusEl=document.getElementById('queue-priority-status');
+  if(statusEl){statusEl.textContent='Saving priority…';}
+  var ids=_schedPending.map(function(x){return x.id;});
+  fetchJsonSafe('/api/queue/reorder',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ordered_ids:ids})
+  }).then(function(d){
+    if(!d||!d.ok){throw new Error((d&&d.error)||'save failed');}
+    if(statusEl){statusEl.textContent='Priority saved.';}
+  }).catch(function(err){
+    if(statusEl){statusEl.textContent='Save failed: '+(err.message||err);}
+  });
+}
+
+function deleteSchedulerQueueItem(topicId){
+  if(!confirm('Delete this topic from the queue?')){return;}
+  var statusEl=document.getElementById('queue-priority-status');
+  if(statusEl){statusEl.textContent='Deleting…';}
+  fetchJsonSafe('/api/queue/delete/'+topicId,{method:'DELETE'})
+    .then(function(d){
+      if(!d||!d.ok){throw new Error((d&&d.error)||'delete failed');}
+      _schedPending=_schedPending.filter(function(x){return x.id!==topicId;});
+      renderSchedulerQueuePriority();
+      if(statusEl){statusEl.textContent='Topic deleted. ('+_schedPending.length+' remaining)';}
+    })
+    .catch(function(err){
+      if(statusEl){statusEl.textContent='Delete failed: '+(err.message||err);}
+    });
+}
+
 function exportCSV(){
   var csv='Title,Type,Date,Status\n'+queue.map(function(q){return '"'+q.title+'",'+q.type+','+q.date+','+q.status;}).join('\n');
   var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(csv);a.download='youtube_queue.csv';a.click();
@@ -3387,10 +3877,12 @@ function renderQueue(){
         :'<div class="q-thumb-prev" style="width:72px;height:41px;border-radius:5px;background:var(--bg4);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--dim)">&#128444;&#65039;</div>';
       var badges='<span class="q-badge '+(item.hasScript?'q-badge-on':'q-badge-off')+'">&#9997; Script</span>'+
         ' <span class="q-badge '+(item.hasSEO?'q-badge-on':'q-badge-off')+'">&#128269; SEO</span>'+
-        ' <span class="q-badge '+(item.hasThumb?'q-badge-on':'q-badge-off')+'">&#128444; Thumb</span>';
+        ' <span class="q-badge '+(item.hasThumb?'q-badge-on':'q-badge-off')+'">&#128444; Thumb</span>'+
+        ' <span class="q-badge q-badge-on">&#128250; '+esc(_channelDisplayName(item.channel_slug||''))+'</span>'+
+        ' <span class="q-badge q-badge-on">&#127760; '+esc(item.language||'english')+'</span>';
       var safeTitle=item.title.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
       var uploadBtn=item.status!=='done'
-        ?'<button class="btn btn-'+(window.ytToken?'green':'ghost')+' btn-sm" onclick="event.stopPropagation();uploadQueueItem('+item.id+')" style="white-space:nowrap">&#128228; Upload</button>'
+        ?'<button class="btn btn-'+(window.ytToken?'green':'ghost')+' btn-sm" onclick="event.stopPropagation();uploadQueueItem('+item.id+')" style="white-space:nowrap">&#128228; Run + Upload</button>'
         :'<span style="font-size:10px;color:var(--green);white-space:nowrap">&#10003;&nbsp;Done</span>';
       var runDisabled=item.status==='done'||_pipelineLocked;
       var runBtn=item.status!=='done'
@@ -3421,6 +3913,31 @@ function renderQueue(){
           +(item.seoTitle?'<div style="margin-top:10px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">SEO TITLE</div><div style="font-size:12px;color:var(--text)">'+esc(item.seoTitle)+'</div></div>':'')
           +(item.seoDescription?'<div style="margin-top:8px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">DESCRIPTION PREVIEW</div><div style="font-size:11px;color:var(--muted);max-height:70px;overflow-y:auto;white-space:pre-wrap;background:var(--bg3);padding:7px 9px;border-radius:6px">'+esc(item.seoDescription.slice(0,300))+(item.seoDescription.length>300?'&hellip;':'')+'</div></div>':'')
           +(item.seoTags?'<div style="margin-top:8px"><div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:2px">TAGS</div><div style="font-size:10px;color:var(--muted)">'+esc(item.seoTags.slice(0,200))+'</div></div>':'')
+          +'<div style="margin-top:10px;background:var(--bg2);padding:10px;border-radius:6px;border:1px solid var(--border)">'
+            +'<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">🔊 Voice for this video</div>'
+            +'<select id="voice-q-'+item.id+'" onchange="setQItemVoice('+item.id+', this.value)" style="width:100%;margin-bottom:6px">'
+              +'<option value="">🌐 Use channel default</option>'
+              +'<optgroup label="🇺🇸 English">'
+                +'<option value="en-US-ChristopherNeural">Christopher (Documentary)</option>'
+                +'<option value="en-US-BrianNeural">Brian (Professional)</option>'
+                +'<option value="en-US-GuyNeural">Guy (Deep voice)</option>'
+                +'<option value="en-GB-RyanNeural">Ryan (British)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇮🇳 Hindi">'
+                +'<option value="hi-IN-MadhurNeural">Madhur (Male)</option>'
+                +'<option value="hi-IN-SwaraNeural">Swara (Female)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇵🇰 Urdu">'
+                +'<option value="ur-PK-AsadNeural">Asad (Male)</option>'
+                +'<option value="ur-PK-UzmaNeural">Uzma (Female)</option>'
+              +'</optgroup>'
+              +'<optgroup label="🇮🇳 Hinglish">'
+                +'<option value="en-IN-PrabhatNeural">Prabhat (Male)</option>'
+                +'<option value="en-IN-NeerjaNeural">Neerja (Female)</option>'
+              +'</optgroup>'
+            +'</select>'
+            +'<div style="font-size:9px;color:var(--dim)">Test voices in Voice Test tab • Language default used if not selected above</div>'
+          +'</div>'
           +'<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">'
             +'<button class="btn btn-primary btn-sm" onclick="scriptFromQ(\''+safeTitle+'\')">&#9997;&#65039; Edit Script</button>'
             +'<button class="btn btn-ghost btn-sm" onclick="navTo(\'seo\',document.querySelectorAll(\'.nav-item\')[2])">&#128269; SEO</button>'
@@ -3444,6 +3961,14 @@ function toggleQCard(id){
   if(!body)return;
   body.style.display=body.style.display==='none'||body.style.display===''?'block':'none';
 }
+
+function setQItemVoice(id, voiceId){
+  var item=queue.find(function(q){return q.id===id;});
+  if(!item)return;
+  item.voice_id = voiceId || '';
+  saveQ();
+}
+
 function scriptFromQ(title){document.getElementById('sc-topic').value=title;navTo('script',document.querySelectorAll('.nav-item')[1]);}
 
 function addSEOToQueue(){
@@ -3452,11 +3977,17 @@ function addSEOToQueue(){
   if(!t){alert('Generate SEO first — no title found.');return;}
   var meta={hasScript:true,hasSEO:true,seoTitle:t,
     seoDescription:document.getElementById('seo-desc').textContent||'',
+    language:getCurrentPipelineLanguage(),
+    duration_hint:getScriptDuration(),
     seoTags:document.getElementById('seo-tags-raw').value||''};
+  if(selectedChannelSlug)meta.channel_slug=selectedChannelSlug;
   var existing=queue.find(function(q){return q.title.toLowerCase()===t.toLowerCase();});
   if(existing){
     existing.hasSEO=true;existing.seoTitle=meta.seoTitle;
     existing.seoDescription=meta.seoDescription;existing.seoTags=meta.seoTags;
+    existing.language=existing.language||meta.language;
+    existing.duration_hint=existing.duration_hint||meta.duration_hint;
+    existing.channel_slug=existing.channel_slug||meta.channel_slug||'';
     saveQ();renderQueue();
   } else {
     addQueueItem(t,'Scripted',meta);
@@ -3485,35 +4016,23 @@ function saveThumbToQueue(){
 
 function uploadQueueItem(id){
   var item=queue.find(function(q){return q.id===id;});if(!item)return;
-  if(!window.ytToken){
+  var targetSlug=_resolveValidChannelSlug(item.channel_slug||selectedChannelSlug||'', true);
+  if(targetSlug&&item.channel_slug!==targetSlug){
+    item.channel_slug=targetSlug;
+    saveQ();
+  }
+  var hasYouTubeToken = window.ytToken || (_ytChannels && _ytChannels.some(function(c){
+    if(targetSlug){return c.slug===targetSlug&&c.has_token;}
+    return c.is_default&&c.has_token;
+  }));
+  if(!hasYouTubeToken){
     var cmd='python main.py "'+item.title.replace(/"/g,'\\"')+'"';
     if(confirm('YouTube not connected yet.\n\nRun this from your terminal to produce & upload via Python pipeline:\n\n'+cmd+'\n\nCopy command to clipboard?')){
       navigator.clipboard.writeText(cmd).catch(function(){});
     }
     return;
   }
-  var vidId=prompt('Enter the YouTube Video ID to apply SEO + thumbnail\n(upload must already exist — leave blank to skip):','');
-  if(vidId){
-    document.getElementById('apply-video-id').value=vidId;
-    document.getElementById('thumb-video-id').value=vidId;
-    if(item.hasSEO){
-      document.getElementById('seo-titles').textContent='Option 1: '+item.seoTitle;
-      document.getElementById('seo-desc').textContent=item.seoDescription;
-      document.getElementById('seo-tags-raw').value=item.seoTags;
-      document.getElementById('seo-out').style.display='block';
-      applyToYouTube();
-    }
-    if(item.hasThumb&&item.thumbDataUrl){
-      var img=new Image();
-      img.onload=function(){
-        var cv=document.getElementById('tc');
-        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-        pushThumbnailToYouTube();
-      };
-      img.src=item.thumbDataUrl;
-    }
-  }
-  item.status='done';saveQ();renderQueue();
+  runPipelineForTopic(item,{autoUpload:_isAutoUploadEnabled(),queueItemId:item.id});
 }
 var perfData=[];
 
@@ -3597,10 +4116,16 @@ function loadSettings(){ loadAllSettings(); }
     loadYouTubeChannels(); // populate channel list + upload dropdown
     loadSocialPlatforms(); // populate social platforms list + pipeline toggles
     // Resume global progress bar if pipeline is already running
-    fetch('/api/pipeline/status').then(function(r){return r.json();}).then(function(d){
+    fetchJsonSafe('/api/pipeline/status').then(function(d){
       if(d.status==='running'){gpbStart();}
       else if(d.status==='ready'||d.status==='done'){_gpbUpdate(d);}
     }).catch(function(){});
+    ['cfg-lang','sc-topic','sc-guidance','sc-ctx','sc-dur'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(!el)return;
+      el.addEventListener('input',_persistDraftContext);
+      el.addEventListener('change',_persistDraftContext);
+    });
     // Check process lock status and refresh periodically
     checkPipelineLock();
     setInterval(checkPipelineLock,15000);
@@ -3638,12 +4163,11 @@ async function initFromEnv(){
 // ── DB auto-loader — pulls live SQLite data from server.py endpoints ──────────
 async function loadFromDB(){
   try{
-    var [statsR, costsR, videosR, yppR, queueR] = await Promise.allSettled([
+    var [statsR, costsR, videosR, yppR] = await Promise.allSettled([
       fetch('/api/db/stats',  {cache:'no-store'}),
       fetch('/api/db/costs',  {cache:'no-store'}),
       fetch('/api/db/videos', {cache:'no-store'}),
       fetch('/api/db/ypp',    {cache:'no-store'}),
-      fetch('/api/db/queue',  {cache:'no-store'}),
     ]);
 
     // ── Channel stats → Performance Tracker ──
@@ -3708,23 +4232,6 @@ async function loadFromDB(){
         _renderDBVideos(videos);
         _usage.videos = videos.filter(function(v){return v.status==='published';}).length;
         document.getElementById('vids-this-month').textContent = _usage.videos;
-      }
-    }
-
-    // ── DB topic queue → merge pending pipeline topics into queue ──
-    if(queueR.status==='fulfilled' && queueR.value.ok){
-      var dbq = await queueR.value.json();
-      if(Array.isArray(dbq) && dbq.length){
-        var added = 0;
-        dbq.forEach(function(row){
-          if((row.status==='pending'||row.status==='processing')&&
-             !queue.find(function(q){return q.title.toLowerCase()===row.topic.toLowerCase();})){
-            addQueueItem(row.topic, row.type||'Planned', {});
-            added++;
-          }
-        });
-        var pending = dbq.filter(function(q){return q.status==='pending'||q.status==='processing';}).length;
-        if(pending) _dbBanner('queue','DB queue: '+pending+' topics ('+added+' new synced)');
       }
     }
 
@@ -4009,7 +4516,8 @@ function saveAllSettings(){
     introDur: document.getElementById('cfg-intro').value,
     outroDur: document.getElementById('cfg-outro').value,
     outroCta: document.getElementById('cfg-outro-cta').value,
-    musicVol: document.getElementById('cfg-music-vol').value
+    musicVol: document.getElementById('cfg-music-vol').value,
+    autoUploadQueue: document.getElementById('cfg-auto-upload-youtube').checked ? 'true' : 'false'
   };
   _dbSave('config', s);
   _dirty = false;
@@ -4071,6 +4579,7 @@ async function loadAllSettings(){
     if(s.outroDur){document.getElementById('cfg-outro').value=s.outroDur;document.getElementById('outro-val').textContent=s.outroDur+'s';}
     if(s.outroCta){document.getElementById('cfg-outro-cta').value=s.outroCta;}
     if(s.musicVol){document.getElementById('cfg-music-vol').value=s.musicVol;document.getElementById('mv-val').textContent=s.musicVol+'dB';}
+    if(s.autoUploadQueue!==undefined){document.getElementById('cfg-auto-upload-youtube').checked=(String(s.autoUploadQueue)==='true');}
     // Update status dots for keys that are set
     if(s.anthropic){setStatus('anthropic','on','Saved');}
     if(s.elevenlabs){setStatus('elevenlabs','on','Saved');}
@@ -4080,6 +4589,7 @@ async function loadAllSettings(){
     updateBudgetBar('anthropic');
     updateELBar();
     updateBudgetOverview();
+    if(all.draft_context){_restoreDraftContext(all.draft_context);}
     // Load YT Automation settings
     if(all.yt_automation) loadYtAutomation(all.yt_automation);
   }catch(e){ console.error('Load settings error:',e); }
@@ -4447,12 +4957,14 @@ function clearThumbBg(){
 var _ytChannels = [];
 
 function loadYouTubeChannels() {
-  fetch('/api/channels').then(function(r){return r.json();}).then(function(d){
-    if(!d.ok) return;
+  fetchJsonSafe('/api/channels').then(function(d){
+    if(!d.ok) throw new Error(d.error||'Failed to load channels');
     _ytChannels = d.channels || [];
     renderChannelList();
     populateChannelDropdown();
-  }).catch(function(){});
+  }).catch(function(e){
+    _setInlineError('yt-channels-list','Could not load channels: '+(e&&e.message?e.message:'unknown error'));
+  });
 }
 
 function renderChannelList() {
@@ -4462,12 +4974,15 @@ function renderChannelList() {
     el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0;text-align:center">No channels connected yet. Add your first channel below.</div>';
     return;
   }
-  var html = '<div style="display:flex;flex-direction:column;gap:6px">';
+  var html = '<div style="display:flex;flex-direction:column;gap:10px">';
   _ytChannels.forEach(function(ch) {
     var isDefault = ch.is_default;
     var statusColor = ch.has_token ? 'var(--green)' : 'var(--red)';
     var statusText = ch.has_token ? '✓ Connected' : '✗ Token missing';
-    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:7px;border:1px solid ' + (isDefault ? 'rgba(61,219,160,0.3)' : 'var(--border)') + '">';
+    html += '<div style="background:var(--bg3);border-radius:7px;border:1px solid ' + (isDefault ? 'rgba(61,219,160,0.3)' : 'var(--border)') + ';padding:10px">';
+    
+    // Header with name and status
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
     html += '<div style="flex:1">';
     html += '<div style="font-size:12px;font-weight:600;color:var(--text)">' + (ch.name || ch.slug) + '</div>';
     html += '<div style="font-size:10px;color:var(--muted)">' + (ch.channel_id || 'No ID') + ' &nbsp;·&nbsp; <span style="color:' + statusColor + '">' + statusText + '</span></div>';
@@ -4479,26 +4994,172 @@ function renderChannelList() {
     }
     html += '<button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--red)" onclick="removeChannel(\'' + ch.slug + '\',\'' + (ch.name||ch.slug).replace(/'/g,"\\'") + '\')">✗</button>';
     html += '</div>';
+    
+    // Voice selector (new)
+    html += '<div style="background:var(--bg2);padding:8px;border-radius:5px;border:1px solid var(--border)">';
+    html += '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:5px">Voice for this channel</label>';
+    html += '<select id="voice-' + ch.slug + '" onchange="setChannelVoice(\'' + ch.slug + '\', this.value)" style="width:100%">';
+    html += '<option value="">🌐 Use global default</option>';
+    
+    // Voice groups by language
+    var voiceGroups = {
+      'english': ['en-US-ChristopherNeural', 'en-US-BrianNeural', 'en-US-GuyNeural', 'en-GB-RyanNeural'],
+      'hindi': ['hi-IN-MadhurNeural', 'hi-IN-SwaraNeural'],
+      'urdu': ['ur-PK-AsadNeural', 'ur-PK-UzmaNeural'],
+      'hinglish': ['en-IN-PrabhatNeural', 'en-IN-NeerjaNeural']
+    };
+    var voiceNames = {
+      'en-US-ChristopherNeural': 'Christopher (Documentary)',
+      'en-US-BrianNeural': 'Brian (Professional)',
+      'en-US-GuyNeural': 'Guy (Deep voice)',
+      'en-GB-RyanNeural': 'Ryan (British)',
+      'hi-IN-MadhurNeural': 'Madhur (Male)',
+      'hi-IN-SwaraNeural': 'Swara (Female)',
+      'ur-PK-AsadNeural': 'Asad (Male)',
+      'ur-PK-UzmaNeural': 'Uzma (Female)',
+      'en-IN-PrabhatNeural': 'Prabhat (Male)',
+      'en-IN-NeerjaNeural': 'Neerja (Female)'
+    };
+    var langLabels = {'english': '🇺🇸 English', 'hindi': '🇮🇳 Hindi', 'urdu': '🇵🇰 Urdu', 'hinglish': '🇮🇳 Hinglish'};
+    
+    for (var lang in voiceGroups) {
+      html += '<optgroup label="' + langLabels[lang] + '">';
+      voiceGroups[lang].forEach(function(voiceId) {
+        html += '<option value="' + voiceId + '">' + voiceNames[voiceId] + '</option>';
+      });
+      html += '</optgroup>';
+    }
+    
+    html += '</select>';
+    html += '<div style="font-size:9px;color:var(--dim);margin-top:4px">Or test voices in the Voice Test tab</div>';
+    html += '</div>';
+    
+    html += '</div>';
   });
   html += '</div>';
   el.innerHTML = html;
+  
+  // Load current voice for each channel
+  _ytChannels.forEach(function(ch) {
+    loadChannelVoice(ch.slug);
+  });
+}
+
+function loadChannelVoice(slug) {
+  fetch('/api/channels/' + slug + '/voice')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok && d.voice_id) {
+        var sel = document.getElementById('voice-' + slug);
+        if (sel) sel.value = d.voice_id;
+      }
+    })
+    .catch(function() {});
+}
+
+function setChannelVoice(slug, voiceId) {
+  if (!voiceId) return; // "Use global default" selected
+  fetch('/api/channels/' + slug + '/voice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ voice_id: voiceId })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) {
+        alert('Failed to set voice: ' + (d.error || 'Unknown error'));
+        loadChannelVoice(slug); // Revert to previous
+      }
+    })
+    .catch(function(e) {
+      alert('Error: ' + e);
+      loadChannelVoice(slug); // Revert to previous
+    });
 }
 
 function populateChannelDropdown() {
   var sel = document.getElementById('pl-channel-select');
-  if (!sel) return;
-  sel.innerHTML = '';
-  if (_ytChannels.length === 0) {
-    sel.innerHTML = '<option value="">No channels — add in Settings</option>';
-    return;
+  var trendSel = document.getElementById('trending-channel-select');
+  var studioSel = document.getElementById('stu-channel');
+  var brandSel = document.getElementById('brand-channel-select');
+  var healthSel = document.getElementById('health-channel-slug-sel');
+  if (!sel && !trendSel && !studioSel && !brandSel && !healthSel) return;
+  
+  // Populate Pipeline upload channel selector
+  if (sel) {
+    sel.innerHTML = '';
+    if (_ytChannels.length === 0) {
+      sel.innerHTML = '<option value="">No channels — add in Settings</option>';
+    } else {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        if (ch.is_default) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
   }
-  _ytChannels.forEach(function(ch) {
-    var opt = document.createElement('option');
-    opt.value = ch.slug;
-    opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
-    if (ch.is_default) opt.selected = true;
-    sel.appendChild(opt);
-  });
+  
+  // Populate Trending/Script channel selector
+  if (trendSel) {
+    trendSel.innerHTML = '<option value="">🌐 Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        trendSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (studioSel) {
+    studioSel.innerHTML = '<option value="">Default</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = ch.name || ch.slug;
+        if (ch.is_default) opt.selected = true;
+        studioSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (brandSel) {
+    brandSel.innerHTML = '<option value="">Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        if (ch.is_default) opt.selected = true;
+        brandSel.appendChild(opt);
+      });
+    }
+  }
+
+  if (healthSel) {
+    var prev = healthSel.value || '';
+    healthSel.innerHTML = '<option value="">Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        healthSel.appendChild(opt);
+      });
+    }
+    healthSel.value = prev;
+  }
+
+  var resolvedSelectedSlug=_resolveValidChannelSlug(selectedChannelSlug, false);
+  if(resolvedSelectedSlug!==selectedChannelSlug){
+    setSelectedChannel(resolvedSelectedSlug);
+  } else if(!resolvedSelectedSlug&&selectedChannelSlug){
+    setSelectedChannel('');
+  }
 }
 
 function addYouTubeChannel() {
@@ -4510,6 +5171,40 @@ function addYouTubeChannel() {
   fetch('/api/channels/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:name})})
     .then(function(r){return r.json();})
     .then(function(d){
+      if (d.ok && d.requires_oauth && d.oauth_url) {
+        var popup = window.open(d.oauth_url, 'yt-oauth', 'width=560,height=720');
+        if (!popup) {
+          btn.disabled = false; btn.textContent = '+ Add Channel';
+          alert('Popup was blocked. Please allow popups for this site and try again.');
+          return;
+        }
+        var cleanup = function(){
+          window.removeEventListener('message', onMsg);
+          if (pollTimer) clearInterval(pollTimer);
+          btn.disabled = false; btn.textContent = '+ Add Channel';
+        };
+        var onMsg = function(ev){
+          var msg = ev && ev.data;
+          if (!msg || msg.type !== 'yt_channel_added') return;
+          cleanup();
+          if (msg.ok) {
+            nameInput.value = '';
+            loadYouTubeChannels();
+            alert('Channel connected successfully.');
+          } else {
+            alert('Channel connection failed. Please try again.');
+          }
+        };
+        var pollTimer = setInterval(function(){
+          if (popup.closed) {
+            cleanup();
+            loadYouTubeChannels();
+          }
+        }, 600);
+        window.addEventListener('message', onMsg);
+        return;
+      }
+
       btn.disabled = false; btn.textContent = '+ Add Channel';
       if (d.ok) {
         nameInput.value = '';
@@ -4554,7 +5249,7 @@ function connectYouTube(){
   }
   ytTokenClient=google.accounts.oauth2.initTokenClient({
     client_id:clientId,
-    scope:'https://www.googleapis.com/auth/youtube.force-ssl',
+    scope:'https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
     callback:function(response){
       if(response.error){
         document.getElementById('yt-connect-status').textContent='✗ '+response.error+' — check Client ID and authorized origins';
@@ -4693,6 +5388,12 @@ function copyDockerCmd(){
 var _plStatus='idle';
 var _plPollTimer=null;
 var _pipelineLocked=false;
+var _plAutoUpload=false;
+var _plAutoUploadTriggered=false;
+var _plQueueItemId=null;
+var _plLastPayload=null;
+var _plLastStatusMsg='';
+var _plPollErrorCount=0;
 var _plStepMap={
   'script':  'pls-script',
   'audio':   'pls-audio',
@@ -4730,7 +5431,36 @@ function _plSetStep(msg){
   }
 }
 
-function runPipelineForTopic(itemOrTopic){
+function _plRenderPayloadSummary(item,payload){
+  var box=document.getElementById('pl-payload-summary');
+  if(!box)return;
+  var channel='Default channel';
+  var slug=payload.channel_slug||'';
+  if(slug&&_ytChannels&&_ytChannels.length){
+    var found=_ytChannels.find(function(c){return c.slug===slug;});
+    if(found){channel=(found.name||found.slug)+' ('+found.slug+')';}
+    else{channel=slug;}
+  }
+  var lines=[];
+  lines.push('Channel: '+channel);
+  lines.push('Language: '+(payload.language||'english'));
+  lines.push('Duration target: '+(payload.duration_hint||'6-8 minutes detailed and engaging'));
+  lines.push('Voice: '+(payload.voice_id||'Channel/global default'));
+  lines.push('Shorts: '+(payload.shortsCount||0));
+  lines.push('Assets: '+[
+    payload.scriptText?'Script':'No script',
+    payload.seoTitle||payload.seoDescription||payload.seoTags?'SEO':'No SEO',
+    payload.thumbDataUrl?'Thumbnail':'No thumbnail'
+  ].join(' · '));
+  lines.push('Auto-upload: '+(_plAutoUpload?'On':'Off'));
+  box.innerHTML=lines.map(function(line){
+    return '<div style="font-size:11px;color:var(--muted);line-height:1.45">'+_escHtml(line)+'</div>';
+  }).join('');
+  box.style.display='block';
+}
+
+function runPipelineForTopic(itemOrTopic, opts){
+  opts=opts||{};
   // Accept either a queue item object or a plain topic string
   var item = (typeof itemOrTopic === 'object' && itemOrTopic !== null) ? itemOrTopic : {title: itemOrTopic};
   var topic = item.title || itemOrTopic;
@@ -4754,6 +5484,7 @@ function runPipelineForTopic(itemOrTopic){
   if(item.hasThumb&&item.thumbDataUrl){hints.push('✓ Custom thumbnail');}
   document.getElementById('pl-status-msg').textContent=hints.length?'Using: '+hints.join(' · '):'Starting pipeline…';
   document.getElementById('pl-error-box').style.display='none';
+  var warn=document.getElementById('pl-warn-box');if(warn)warn.style.display='none';
   document.getElementById('pl-preview-section').style.display='none';
   document.getElementById('pl-done-section').style.display='none';
   document.getElementById('pl-close-btn').disabled=true;
@@ -4761,10 +5492,22 @@ function runPipelineForTopic(itemOrTopic){
     var el=document.getElementById(id);if(el)el.className='pl-step idle';
   });
   _plStatus='running';
+  _plAutoUpload=!!opts.autoUpload;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=opts.queueItemId||item.id||null;
   modal.style.display='flex';
   var payload={topic:topic};
+  var resolvedChannelSlug=_resolveValidChannelSlug(item.channel_slug||selectedChannelSlug||'', !!_plAutoUpload);
+  if(resolvedChannelSlug&&item.channel_slug!==resolvedChannelSlug){
+    item.channel_slug=resolvedChannelSlug;
+    saveQ();
+  }
   if(item.scriptText)payload.scriptText=item.scriptText;
   if(item.guidance)payload.guidance=item.guidance;
+  if(item.voice_id)payload.voice_id=item.voice_id;
+  payload.language=item.language||getCurrentPipelineLanguage();
+  payload.duration_hint=item.duration_hint||getScriptDuration();
+  if(resolvedChannelSlug)payload.channel_slug=resolvedChannelSlug;
   if(item.hasSEO){
     payload.seoTitle=item.seoTitle||'';
     payload.seoDescription=item.seoDescription||'';
@@ -4776,6 +5519,10 @@ function runPipelineForTopic(itemOrTopic){
   if(shortsCheck&&shortsCheck.checked){
     payload.shortsCount=parseInt(document.getElementById('pl-shorts-count').value)||2;
   }
+  _plLastPayload=payload;
+  _plLastStatusMsg='';
+  _plPollErrorCount=0;
+  _plRenderPayloadSummary(item,payload);
   fetchJsonSafe('/api/pipeline/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(d){
       if(!d.ok){_plShowError(d.error||'Failed to start');return;}
@@ -4786,11 +5533,14 @@ function runPipelineForTopic(itemOrTopic){
 }
 
 function _plPoll(){
-  fetch('/api/pipeline/status')
-    .then(function(r){return r.json();})
+  fetchJsonSafe('/api/pipeline/status')
     .then(function(d){
       _plStatus=d.status;
       var msg=d.message||'';
+      _plLastStatusMsg=msg;
+      _plPollErrorCount=0;
+      var warn=document.getElementById('pl-warn-box');
+      if(warn)warn.style.display='none';
       document.getElementById('pl-status-msg').textContent=msg;
       _plSetStep(msg);
       _gpbUpdate(d); // sync global progress bar
@@ -4799,6 +5549,10 @@ function _plPoll(){
         if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
         document.getElementById('pl-close-btn').disabled=false;
         _plShowPreview(d);
+        if(_plAutoUpload&&!_plAutoUploadTriggered){
+          _plAutoUploadTriggered=true;
+          approvePipelineUpload();
+        }
       } else if(d.status==='done'){
         clearInterval(_plPollTimer);_plPollTimer=null;
         if(_gpbPollTimer){clearInterval(_gpbPollTimer);_gpbPollTimer=null;}
@@ -4811,7 +5565,18 @@ function _plPoll(){
         _plShowError(d.error||'Pipeline failed');
       }
     })
-    .catch(function(){/* ignore transient errors */});
+    .catch(function(){
+      _plPollErrorCount+=1;
+      var warn=document.getElementById('pl-warn-box');
+      if(warn){
+        warn.textContent='Connection issue while tracking progress ('+_plPollErrorCount+'). Pipeline may still be running.';
+        warn.style.display='block';
+      }
+      if(_plPollErrorCount>=6){
+        if(_plPollTimer){clearInterval(_plPollTimer);_plPollTimer=null;}
+        _plShowError('Lost connection while tracking pipeline status. Refresh and check Running Jobs.');
+      }
+    });
 }
 
 function _plShowPreview(d){
@@ -4866,14 +5631,31 @@ function _plShowDone(ytUrl){
   var link=document.getElementById('pl-yt-link');
   link.href=ytUrl||'#';
   document.getElementById('pl-done-section').style.display='block';
+  if(_plQueueItemId){
+    var q=queue.find(function(it){return it.id===_plQueueItemId;});
+    if(q){q.status='done';saveQ();renderQueue();}
+  }
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
 }
 
 function _plShowError(msg){
   _plStatus='failed';
   var box=document.getElementById('pl-error-box');
-  box.textContent='✗ '+msg;
+  var details=[];
+  if(_plLastPayload&&_plLastPayload.topic)details.push('Topic: '+_plLastPayload.topic);
+  if(_plLastPayload&&_plLastPayload.channel_slug)details.push('Channel: '+_plLastPayload.channel_slug);
+  if(_plLastStatusMsg)details.push('Last status: '+_plLastStatusMsg);
+  var detailHtml=details.length
+    ?'<div style="margin-top:6px;font-size:11px;color:#fecaca;line-height:1.45">'+details.map(function(d){return _escHtml(d);}).join('<br>')+'</div>'
+    :'';
+  box.innerHTML='<strong>✗ '+_escHtml(msg)+'</strong>'+detailHtml;
   box.style.display='block';
   document.getElementById('pl-close-btn').disabled=false;
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
 }
 
 function approvePipelineUpload(){
@@ -4902,6 +5684,9 @@ function cancelPipeline(){
   if(_plPollTimer){clearInterval(_plPollTimer);_plPollTimer=null;}
   fetch('/api/pipeline/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
   _plStatus='idle';
+  _plAutoUpload=false;
+  _plAutoUploadTriggered=false;
+  _plQueueItemId=null;
   document.getElementById('pl-modal').style.display='none';
 }
 
@@ -4916,6 +5701,9 @@ function killPipeline(){
         _gpbUpdate({status:'idle'});
         document.getElementById('pl-close-btn').disabled=false;
         _plShowError('Pipeline killed by user.');
+        _plAutoUpload=false;
+        _plAutoUploadTriggered=false;
+        _plQueueItemId=null;
         checkPipelineLock();
       } else {
         alert(d.error||'Failed to kill pipeline');
@@ -4945,10 +5733,63 @@ var _studioInfo=null;
 var _studioClipPaths=[];
 var _studioClipCount=0;
 
+function _isLikelyReelVideo(v){
+  var p=((v&&v.path)||'').toLowerCase();
+  return p.indexOf('/shorts')!==-1 || p.indexOf('/clips')!==-1 || p.indexOf('shorts_animated')!==-1 || p.indexOf('smoke_shorts')!==-1;
+}
+
+function studioLoadExistingReels(){
+  var list=document.getElementById('stu-existing-reels-list');
+  var st=document.getElementById('stu-existing-reels-status');
+  if(!list||!st){return;}
+  var reels=(_studioVideos||[]).filter(_isLikelyReelVideo);
+  if(!reels.length){
+    list.innerHTML='';
+    st.textContent='No existing reels/shorts found yet.';
+    st.style.color='var(--amber)';
+    return;
+  }
+  st.textContent='Found '+reels.length+' reel/short file(s). Select and click "Use Selected Reels".';
+  st.style.color='var(--muted)';
+  list.innerHTML=reels.map(function(v,i){
+    return '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;cursor:pointer">'
+      +'<input type="checkbox" class="stu-existing-reel-cb" value="'+_escHtml(v.path)+'" style="margin-top:2px"'+(i<3?' checked':'')+'/>'
+      +'<span style="flex:1;min-width:0">'
+      +'<span style="display:block;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_escHtml(v.name)+'</span>'
+      +'<span style="display:block;color:var(--dim);font-size:10px">'+_escHtml((v.path||'').replace(/^.*\/output\//,'output/'))+' • '+v.size_mb+' MB</span>'
+      +'</span>'
+      +'</label>';
+  }).join('');
+}
+
+function studioUseSelectedReels(){
+  var st=document.getElementById('stu-existing-reels-status');
+  var picked=[];
+  document.querySelectorAll('.stu-existing-reel-cb:checked').forEach(function(cb){
+    var p=(cb.value||'').trim();
+    if(p) picked.push(p);
+  });
+  if(!picked.length){
+    if(st){st.textContent='Select at least one reel/short video.';st.style.color='var(--red)';}
+    return;
+  }
+  _studioClipPaths=picked;
+  var html='';
+  picked.forEach(function(p,idx){
+    var name=p.split('/').pop();
+    html+='<div style="padding:6px;margin-bottom:4px;background:var(--bg3);border-radius:6px;font-size:11px;display:flex;justify-content:space-between">';
+    html+='<span style="color:var(--green)">\u2713 existing-'+(idx+1)+': '+_escHtml(name)+'</span>';
+    html+='<span style="color:var(--dim)">ready</span></div>';
+  });
+  document.getElementById('stu-extracted-list').innerHTML=html;
+  document.getElementById('stu-extracted-section').style.display='block';
+  if(st){st.textContent='Using '+picked.length+' existing reel(s)/short(s).';st.style.color='var(--green)';}
+}
+
 function loadStudioVideos(){
   var sel=document.getElementById('stu-video-select');
   sel.innerHTML='<option value="">Loading\u2026</option>';
-  fetch('/api/studio/videos').then(function(r){return r.json();}).then(function(d){
+  fetchJsonSafe('/api/studio/videos').then(function(d){
     _studioVideos=d.videos||[];
     var html='<option value="">\u2014 Select a video \u2014</option>';
     _studioVideos.forEach(function(v){
@@ -4957,27 +5798,38 @@ function loadStudioVideos(){
     sel.innerHTML=html;
     // Also populate channel dropdown
     _loadStudioChannels();
+    // Refresh existing reels picker if user is using that workflow
+    studioLoadExistingReels();
   }).catch(function(e){
     sel.innerHTML='<option value="">Error loading videos</option>';
+    var st=document.getElementById('stu-upload-main-status');
+    if(st){st.textContent='Failed to load videos: '+(e&&e.message?e.message:'unknown error');st.style.color='var(--red)';}
   });
 }
 
 function _loadStudioChannels(){
-  fetch('/api/channels').then(function(r){return r.json();}).then(function(list){
+  fetchJsonSafe('/api/channels').then(function(list){
     var sel=document.getElementById('stu-channel');
     var html='<option value="">Default</option>';
-    (list||[]).forEach(function(ch){
+    ((list && list.channels) || []).forEach(function(ch){
       html+='<option value="'+_escHtml(ch.slug)+'"'+(ch.is_default?' selected':'')+'>'+_escHtml(ch.name)+'</option>';
     });
     sel.innerHTML=html;
-  }).catch(function(){});
+  }).catch(function(e){
+    var st=document.getElementById('stu-upload-main-status');
+    if(st){st.textContent='Failed to load channels: '+(e&&e.message?e.message:'unknown error');st.style.color='var(--red)';}
+  });
 }
 
 function studioVideoChanged(){
   var path=document.getElementById('stu-video-select').value;
   var info=document.getElementById('stu-video-info');
+  var delBtn=document.getElementById('stu-delete-btn');
+  var dlBtn=document.getElementById('stu-download-btn');
   _studioInfo=null;
-  if(!path){info.style.display='none';return;}
+  if(!path){info.style.display='none';if(delBtn)delBtn.style.display='none';if(dlBtn)dlBtn.style.display='none';return;}
+  if(delBtn)delBtn.style.display='';
+  if(dlBtn)dlBtn.style.display='';
   info.style.display='block';
   document.getElementById('stu-v-dur').textContent='\u2026';
   fetch('/api/studio/info/'+encodeURIComponent(path)).then(function(r){return r.json();}).then(function(d){
@@ -5067,6 +5919,43 @@ function studioExtractClips(){
   }).catch(function(e){btn.disabled=false;st.textContent=e.message;st.style.color='var(--red)';});
 }
 
+function studioDownloadVideo(){
+  var vpath=document.getElementById('stu-video-select').value;
+  if(!vpath){return;}
+  var filename=vpath.split('/').pop();
+  var url='/api/studio/download/'+encodeURIComponent(filename);
+  var link=document.createElement('a');
+  link.href=url;
+  link.download=filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function studioDeleteVideo(){
+  var vpath=document.getElementById('stu-video-select').value;
+  if(!vpath){return;}
+  var name=vpath.split('/').pop();
+  if(!confirm('Delete "'+name+'" from local disk?\n\nThis cannot be undone.')){return;}
+  var btn=document.getElementById('stu-delete-btn');
+  if(btn){btn.disabled=true;btn.textContent='Deleting\u2026';}
+  fetchJsonSafe('/api/studio/delete',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_path:vpath})})
+    .then(function(d){
+      if(d&&d.ok){
+        var st=document.getElementById('stu-upload-main-status');
+        if(st){st.textContent='\u2713 Deleted: '+name;st.style.color='var(--green)';}
+        loadStudioVideos();
+      } else {
+        alert('Delete failed: '+((d&&d.error)||'unknown error'));
+        if(btn){btn.disabled=false;btn.textContent='\uD83D\uDDD1\uFE0F Delete';}
+      }
+    })
+    .catch(function(e){
+      alert('Delete failed: '+(e.message||e));
+      if(btn){btn.disabled=false;btn.textContent='\uD83D\uDDD1\uFE0F Delete';}
+    });
+}
+
 function studioUploadMain(){
   var vpath=document.getElementById('stu-video-select').value;
   var st=document.getElementById('stu-upload-main-status');
@@ -5090,13 +5979,14 @@ function studioUploadMain(){
 }
 
 function studioUploadClips(){
-  if(!_studioClipPaths.length){alert('No clips extracted yet');return;}
+  var validClipPaths=_studioClipPaths.filter(function(p){return typeof p==='string'&&p.trim();});
+  if(!validClipPaths.length){alert('No clips extracted yet');return;}
   var st=document.getElementById('stu-upload-clips-status');
   var btn=document.getElementById('stu-upload-clips-btn');
-  btn.disabled=true;st.textContent='Uploading '+_studioClipPaths.length+' clip(s)\u2026';st.style.color='var(--muted)';
+  btn.disabled=true;st.textContent='Uploading '+validClipPaths.length+' clip(s)\u2026';st.style.color='var(--muted)';
   var tags=(document.getElementById('stu-main-tags').value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
   fetch('/api/studio/upload-clips',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    clip_paths:_studioClipPaths,
+    clip_paths:validClipPaths,
     title:document.getElementById('stu-main-title').value.trim(),
     description:document.getElementById('stu-main-desc').value.trim(),
     tags:tags,
@@ -5182,7 +6072,7 @@ function generateBranding(){
   if(!name){st.textContent='Channel name is required';st.style.color='var(--red)';return;}
   btn.disabled=true;st.textContent='Generating…';st.style.color='var(--muted)';
   fetch('/api/branding/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({channel_name:name,tagline:tag})
+    body:JSON.stringify({channelName:name,tagline:tag})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Assets generated!';st.style.color='var(--green)';loadBrandingAssets();}
@@ -5193,8 +6083,9 @@ function generateBranding(){
 function uploadBannerToYT(){
   var btn=document.getElementById('brand-upload-banner-btn');
   var st=document.getElementById('brand-upload-status');
+  var channel=(document.getElementById('brand-channel-select')||{}).value||null;
   btn.disabled=true;st.textContent='Uploading banner…';st.style.color='var(--muted)';
-  fetch('/api/branding/upload-banner',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  fetch('/api/branding/upload-banner',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:channel})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Banner uploaded to YouTube!';st.style.color='var(--green)';}
@@ -5205,11 +6096,12 @@ function uploadBannerToYT(){
 function setChannelTrailer(){
   var vid=document.getElementById('brand-trailer-id').value.trim();
   var st=document.getElementById('brand-upload-status');
+  var channel=(document.getElementById('brand-channel-select')||{}).value||null;
   if(!vid){st.textContent='Enter a video ID';st.style.color='var(--red)';return;}
   var btn=document.getElementById('brand-trailer-btn');
   btn.disabled=true;st.textContent='Setting trailer…';st.style.color='var(--muted)';
   fetch('/api/branding/set-trailer',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({video_id:vid})
+    body:JSON.stringify({videoId:vid,channel:channel})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;
     if(d.ok){st.textContent='Trailer set!';st.style.color='var(--green)';}
@@ -5218,17 +6110,54 @@ function setChannelTrailer(){
 }
 
 // ===== CHANNEL HEALTH =====
-var _auditCache=null;
+var _auditCacheBySlug={};
+function _healthSlug(){
+  var sel=document.getElementById('health-channel-slug-sel');
+  return sel?sel.value:'';
+}
+function _healthCacheKey(){
+  return _healthSlug() || '__default__';
+}
+function _healthChannelChanged(){
+  runChannelAudit(true);
+}
 function runChannelAudit(){
-  if(_auditCache){_renderAudit(_auditCache);return;}
+  var force=(arguments && arguments[0]===true);
+  var cacheKey=_healthCacheKey();
+  if(!force && _auditCacheBySlug[cacheKey]){_renderAudit(_auditCacheBySlug[cacheKey]);return;}
   var btn=document.getElementById('health-audit-btn');
+  var errBox=document.getElementById('health-audit-error');
+  if(errBox)errBox.style.display='none';
   btn.disabled=true;document.getElementById('health-audit-icon').textContent='⏳';
-  fetch('/api/channel/audit').then(function(r){return r.json();}).then(function(d){
+  // Pass selected channel slug if available
+  var slug=_healthSlug();
+  var url='/api/channel/audit'+(slug?'?slug='+encodeURIComponent(slug):'');
+  fetch(url).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
-    if(!d.ok){alert('Audit failed: '+(d.error||'unknown'));return;}
-    _auditCache=d;
+    if(!d.ok){
+      _showAuditError(d.error||'unknown', d.error_code, d.channel);
+      return;
+    }
+    _auditCacheBySlug[cacheKey]=d;
     _renderAudit(d);
-  }).catch(function(e){btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';alert(e.message);});
+  }).catch(function(e){
+    btn.disabled=false;document.getElementById('health-audit-icon').innerHTML='&#128138;';
+    _showAuditError(e.message);
+  });
+}
+
+function _showAuditError(msg, code, channel){
+  var errBox=document.getElementById('health-audit-error');
+  if(!errBox)return;
+  if(code==='token_revoked'){
+    errBox.innerHTML='<strong>&#9888; Token Expired</strong><br>'+
+      'The YouTube token for <strong>'+(channel||'this channel')+'</strong> has been revoked or expired by Google.<br>'+
+      '<span style="font-size:11px;color:var(--dim)">To fix: Go to <strong>Settings → YouTube Settings → Connected Channels</strong>, '+
+      'click <strong>✗ Remove</strong> on this channel, then click <strong>+ Add Channel</strong> to re-authenticate.</span>';
+  } else {
+    errBox.innerHTML='<strong>&#9888; Audit failed:</strong> '+_escHtml(msg);
+  }
+  errBox.style.display='block';
 }
 
 function _renderAudit(d){
@@ -5306,33 +6235,36 @@ function saveChannelInfo(){
   var st=document.getElementById('health-save-status');
   st.textContent='Saving…';st.style.color='var(--muted)';
   var kw=document.getElementById('health-keywords').value.trim();
+  var slug=_healthSlug()||null;
   fetch('/api/channel/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     description:document.getElementById('health-desc').value.trim(),
     keywords:kw,
     country:document.getElementById('health-country').value.trim(),
-    language:document.getElementById('health-language').value.trim()
+    language:document.getElementById('health-language').value.trim(),
+    channel:slug
   })}).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){st.textContent='Saved!';st.style.color='var(--green)';_auditCache=null;}
+    if(d.ok){st.textContent='Saved!';st.style.color='var(--green)';_auditCacheBySlug={};}
     else{st.textContent='Error: '+(d.error||'unknown');st.style.color='var(--red)';}
   }).catch(function(e){st.textContent=e.message;st.style.color='var(--red)';});
 }
 
 function fixSingleVideo(videoId,btn){
   if(btn)btn.disabled=true;
-  fetch('/api/channel/fix-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video_id:videoId})
+  fetch('/api/channel/fix-video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoId:videoId,channel:_healthSlug()||null})
   }).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){_auditCache=null;runChannelAudit();}
+    if(d.ok){_auditCacheBySlug={};runChannelAudit();}
     else{alert('Error: '+(d.error||'unknown'));if(btn)btn.disabled=false;}
   }).catch(function(e){alert(e.message);if(btn)btn.disabled=false;});
 }
 
 function fixAllVideos(){
   var btn=document.getElementById('health-fixall-btn');
+  var slug=_healthSlug()||null;
   btn.disabled=true;btn.textContent='Fixing…';
-  fetch('/api/channel/fix-all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'
+  fetch('/api/channel/fix-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:slug})
   }).then(function(r){return r.json();}).then(function(d){
     btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';
-    if(d.ok){_auditCache=null;runChannelAudit();}
+    if(d.ok){_auditCacheBySlug={};runChannelAudit();}
     else{alert('Error: '+(d.error||'unknown'));}
   }).catch(function(e){btn.disabled=false;btn.innerHTML='&#128295; Fix All Issues';alert(e.message);});
 }
@@ -5739,9 +6671,9 @@ function saveKlingKeys(){
     <!-- Shorts option -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--bg3);border-radius:8px">
       <label style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;margin:0">
-        <input type="checkbox" id="pl-shorts-check" style="margin-right:4px" onchange="document.getElementById('pl-shorts-count').disabled=!this.checked"> Generate YouTube Shorts
+        <input type="checkbox" id="pl-shorts-check" style="margin-right:4px" checked onchange="document.getElementById('pl-shorts-count').disabled=!this.checked"> Generate YouTube Shorts
       </label>
-      <select id="pl-shorts-count" style="font-size:11px;padding:3px 8px;width:auto" disabled>
+      <select id="pl-shorts-count" style="font-size:11px;padding:3px 8px;width:auto">
         <option value="1">1 Short</option>
         <option value="2" selected>2 Shorts</option>
         <option value="3">3 Shorts</option>
@@ -5752,6 +6684,12 @@ function saveKlingKeys(){
 
     <!-- Status message -->
     <div id="pl-status-msg" style="font-size:12px;color:var(--muted);text-align:center;min-height:18px;margin-bottom:8px"></div>
+
+    <!-- Payload summary -->
+    <div id="pl-payload-summary" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px"></div>
+
+    <!-- Warning box -->
+    <div id="pl-warn-box" style="display:none;background:rgba(247,194,78,.1);border:1px solid rgba(247,194,78,.35);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--amber);margin-bottom:8px"></div>
 
     <!-- Error box -->
     <div id="pl-error-box" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);border-radius:8px;padding:10px 14px;font-size:12px;color:#f87171;margin-bottom:10px"></div>

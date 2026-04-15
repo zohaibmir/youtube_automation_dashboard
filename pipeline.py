@@ -10,6 +10,7 @@ can execute simultaneously without interfering with each other.
 """
 
 import glob
+import copy
 import json
 import logging
 import os
@@ -17,16 +18,49 @@ import signal
 import shutil
 import subprocess
 import uuid
+from voice_config import normalize_language
 
 from audio_generator import generate_audio_segments
-from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR
+from config import BG_MUSIC_PATH, CHANNEL_LANGUAGE, CHANNEL_NICHE, CROSSFADE_DURATION, INTRO_DURATION, VISUAL_MODE, AUTO_CHAPTERS, PIN_FIRST_COMMENT, PINNED_COMMENT_TEXT, CHANNEL_NAME, REDDIT_ENABLED, REDDIT_SUBREDDITS, REDDIT_POST_FLAIR, SCHEDULER_SHORTS_COUNT
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_RUNS_DIR = os.path.join(_BASE_DIR, "runs")          # runs/<job_id>/ per-run workdirs
-_JOBS_DIR = os.path.join(_BASE_DIR, ".jobs")         # .jobs/<job_id>.json per-job status
+
+def _hosted_data_root() -> str:
+    """Return /data if on Render/hosted, otherwise empty string."""
+    if (
+        os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+        or os.getenv("RENDER_EXTERNAL_URL")
+    ) and os.path.isdir("/data"):
+        return "/data"
+    return ""
+
+_data_root = _hosted_data_root()
+_RUNS_DIR = os.path.join(_data_root, "runs") if _data_root else os.path.join(_BASE_DIR, "runs")
+_JOBS_DIR = os.path.join(_data_root, ".jobs") if _data_root else os.path.join(_BASE_DIR, ".jobs")
 
 os.makedirs(_RUNS_DIR, exist_ok=True)
 os.makedirs(_JOBS_DIR, exist_ok=True)
+
+
+def _recover_stale_jobs() -> None:
+    """On startup, mark any persisted 'running' jobs as 'interrupted'.
+
+    They're from a previous server process (e.g. killed by a deploy) and
+    can never complete. PID 1 is always alive in containers so the normal
+    PID-liveness check is not reliable — we use server restart as the signal.
+    """
+    for fp in glob.glob(os.path.join(_JOBS_DIR, "*.json")):
+        try:
+            with open(fp) as f:
+                data = json.load(f)
+            if data.get("status") == "running":
+                data["status"] = "interrupted"
+                with open(fp, "w") as fout:
+                    json.dump(data, fout)
+        except Exception:
+            pass
+
+_recover_stale_jobs()
 
 from content_generator import generate_script, script_text_to_segments
 from database import log_cost, log_video_complete, log_video_error, log_video_start, get_video_record, is_video_uploaded
@@ -53,6 +87,16 @@ def _audio_duration(path: str) -> float:
         return float(streams[0]["duration"]) if streams else 0.0
     except Exception:
         return 0.0
+
+
+def _resolve_shorts_count(shorts_count: int | None) -> int:
+    """Resolve Shorts count with config default and clamp to 0-3."""
+    if shorts_count is None:
+        shorts_count = SCHEDULER_SHORTS_COUNT
+    try:
+        return max(0, min(3, int(shorts_count)))
+    except Exception:
+        return 2
 
 
 def build_chapters(segments: list[dict], audio_files: list[str]) -> str:
@@ -260,8 +304,10 @@ def _resolve_thumb_from_data_url(thumb_data_url: str, out_path: str) -> str | No
 
 
 def run(topic: str, script_text: str | None = None, seo: dict | None = None,
-        thumb_data_url: str | None = None, channel_slug: str | None = None,
-        guidance: str | None = None, shorts_count: int = 0) -> str:
+    thumb_data_url: str | None = None, channel_slug: str | None = None,
+    guidance: str | None = None, shorts_count: int | None = None,
+    voice_id: str | None = None, language: str | None = None,
+    duration_hint: str | None = None) -> str:
     """Execute the full pipeline for a given topic.
 
     Parallel-safe: each call creates an isolated runs/<job_id>/ directory.
@@ -279,6 +325,8 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
     Returns:
         The YouTube video ID on success.
     """
+    shorts_count = _resolve_shorts_count(shorts_count)
+
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
     audio_dir  = os.path.join(job_dir, "audio")
@@ -286,19 +334,36 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
     _register_job(job_id, topic, os.getpid())
     logger.info("[job=%s] Pipeline starting: %s", job_id, topic)
-    vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
+    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
 
     try:
+        generated_segments = None
         # Step 1 — Script (use dashboard script if provided, else generate fresh)
         if script_text:
             logger.info("Using pre-written script from dashboard Script Writer")
-            content = script_text_to_segments(script_text, topic, seo_override=seo)
+            content = script_text_to_segments(
+                script_text,
+                topic,
+                seo_override=seo,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
-            content = generate_script(topic, guidance=guidance, max_tokens=8000)
+            content = generate_script(
+                topic,
+                guidance=guidance,
+                max_tokens=8000,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
+            # Freeze AI-generated script body so later metadata edits never
+            # alter the narration/segment structure used for rendering.
+            generated_segments = copy.deepcopy(content.get("segments", []))
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -309,10 +374,16 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 if seo.get("description"): content["description"] = seo["description"]
                 if seo.get("tags"):        content["tags"]        = seo["tags"]
 
-        segments = content["segments"]
+        segments = generated_segments if generated_segments is not None else content["segments"]
 
         # Step 2 — Text-to-speech (into isolated audio dir)
-        audio_files = generate_audio_segments(segments, out_dir=audio_dir)
+        audio_files = generate_audio_segments(
+            segments,
+            out_dir=audio_dir,
+            edge_voice=voice_id,
+            channel_slug=channel_slug,
+            language=effective_language,
+        )
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         # Step 3 — Stock visuals (into isolated images dir)
@@ -427,7 +498,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
 def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                seo: dict | None = None, thumb_data_url: str | None = None,
-               guidance: str | None = None, shorts_count: int = 0) -> tuple:
+               channel_slug: str | None = None, guidance: str | None = None,
+               voice_id: str | None = None, shorts_count: int | None = None,
+               language: str | None = None, duration_hint: str | None = None) -> tuple:
     """Run pipeline steps 1–5 (generate + build) WITHOUT uploading.
 
     Parallel-safe: uses an isolated runs/<job_id>/ working directory.
@@ -441,25 +514,43 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
             progress_cb(msg)
         logger.info(msg)
 
+    shorts_count = _resolve_shorts_count(shorts_count)
+
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
     audio_dir  = os.path.join(job_dir, "audio")
     thumb_out  = os.path.join(job_dir, "thumbnail.jpg")
 
     _register_job(job_id, topic, os.getpid())
-    vid_id = log_video_start(topic, CHANNEL_NICHE, CHANNEL_LANGUAGE)
+    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
+    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
     try:
+        generated_segments = None
         # Step 1 — Script
         if script_text:
             _p("Converting your Script Writer script to pipeline format…")
-            content = script_text_to_segments(script_text, topic, seo_override=seo)
+            content = script_text_to_segments(
+                script_text,
+                topic,
+                seo_override=seo,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script_convert",
                      units=usage.get("input_tokens", 500) + usage.get("output_tokens", 0),
                      cost_usd=usage.get("cost_usd", 0.001), video_id=vid_id)
         else:
             _p("Generating AI script…")
-            content = generate_script(topic, guidance=guidance)
+            content = generate_script(
+                topic,
+                guidance=guidance,
+                language=effective_language,
+                duration_hint=duration_hint,
+            )
+            # Freeze AI-generated script body so later metadata edits never
+            # alter the narration/segment structure used for rendering.
+            generated_segments = copy.deepcopy(content.get("segments", []))
             usage = content.pop("_usage", {})
             log_cost("anthropic", "script",
                      units=usage.get("input_tokens", 3000) + usage.get("output_tokens", 0),
@@ -469,10 +560,16 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 if seo.get("description"): content["description"] = seo["description"]
                 if seo.get("tags"):        content["tags"]        = seo["tags"]
 
-        segments = content["segments"]
+        segments = generated_segments if generated_segments is not None else content["segments"]
 
         _p(f"Generating audio for {len(segments)} segments…")
-        audio_files = generate_audio_segments(segments, out_dir=audio_dir)
+        audio_files = generate_audio_segments(
+            segments,
+            out_dir=audio_dir,
+            edge_voice=voice_id,
+            channel_slug=channel_slug,
+            language=effective_language,
+        )
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         _p(f"Fetching visuals ({VISUAL_MODE}) for {len(segments)} segments…")
