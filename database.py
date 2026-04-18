@@ -319,6 +319,22 @@ def save_setting(key: str, value) -> None:
         conn.commit()
 
 
+def _channel_registry_name(channel_slug: str | None) -> str | None:
+    """Return channel display name from tokens/channels registry for the given slug."""
+    if not channel_slug:
+        return None
+    try:
+        from youtube_uploader import list_channels
+        for ch in list_channels():
+            if ch.get("slug") == channel_slug:
+                name = (ch.get("name") or "").strip()
+                if name:
+                    return name
+    except Exception:
+        pass
+    return None
+
+
 def get_channel_profile(channel_slug: str | None = None) -> dict:
     """Return effective channel profile with .env defaults as fallback."""
     profile = {
@@ -333,6 +349,11 @@ def get_channel_profile(channel_slug: str | None = None) -> dict:
     }
     if not channel_slug:
         return profile
+
+    # Channel-specific fallback: use registered channel name when .env has a global name.
+    reg_name = _channel_registry_name(channel_slug)
+    if reg_name:
+        profile["channel_name"] = reg_name
 
     with _conn() as conn:
         row = conn.execute(

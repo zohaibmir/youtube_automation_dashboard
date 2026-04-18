@@ -125,6 +125,9 @@ BG_MUSIC_VOLUME_DB: float = float(os.getenv("BG_MUSIC_VOLUME_DB", "-8"))
 BG_MUSIC_PATH: str = os.getenv("BG_MUSIC_PATH", "")
 # Branded intro duration in seconds (0 = no intro)
 INTRO_DURATION: float = float(os.getenv("INTRO_DURATION", "4"))
+# Intro placement: off | start | end
+# Default is end so videos begin immediately with content.
+INTRO_POSITION: str = os.getenv("INTRO_POSITION", "end").strip().lower()
 # Outro duration in seconds with subscribe CTA (0 = no outro)
 OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
 # Outro CTA text shown in the end card

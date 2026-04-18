@@ -698,13 +698,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def _handle_pipeline_upload(self) -> None:
         if not _DB_AVAILABLE:
             self._json_response({"ok": False, "error": "DB not available"}); return
-        # Read optional channel selection from request body
+        # Resolve upload target channel from body, then pipeline job context.
         channel_slug = None
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
                 body = json.loads(self.rfile.read(length))
-                channel_slug = body.get("channel") or None
+                if isinstance(body, dict):
+                    channel_slug = (body.get("channel_slug") or body.get("channel") or "").strip() or None
         except Exception:
             pass
         with _pipeline_lock:
@@ -714,6 +715,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             content    = _pipeline_job["_content"]
             vid_db_id  = _pipeline_job["vid_db_id"]
             shorts_paths = _pipeline_job.get("_shorts_paths", [])
+            if not channel_slug:
+                channel_slug = _pipeline_job.get("channel_slug") or None
         if job_status != "ready":
             self._json_response({"ok": False, "error": f"No video ready (status: {job_status})"}); return
         # Validate video file before attempting upload
@@ -969,29 +972,34 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_pipeline_kill(self, path: str = "/api/pipeline/kill") -> None:
         """POST /api/pipeline/kill[/<job_id>] — Kill running pipeline job(s) and clear lock."""
-        from pipeline import kill_pipeline
-        job_id = None
-        if path.startswith("/api/pipeline/kill/"):
-            job_id = path.rsplit("/", 1)[-1].strip() or None
-        if not job_id:
-            try:
-                length = int(self.headers.get("Content-Length", 0))
-                data = json.loads(self.rfile.read(length)) if length else {}
-                if isinstance(data, dict):
-                    job_id = (data.get("job_id") or "").strip() or None
-            except Exception:
-                job_id = None
+        try:
+            from pipeline import kill_pipeline
+            job_id = None
+            if path.startswith("/api/pipeline/kill/"):
+                job_id = path.rsplit("/", 1)[-1].strip() or None
+            if not job_id:
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    data = json.loads(self.rfile.read(length)) if length else {}
+                    if isinstance(data, dict):
+                        job_id = (data.get("job_id") or "").strip() or None
+                except Exception:
+                    job_id = None
 
-        result = kill_pipeline(job_id=job_id)
-        # Also reset the in-memory pipeline state
-        with _pipeline_lock:
-            _pipeline_job.update({
-                "status": "idle", "topic": None, "message": "",
-                "video_url": None, "thumbnail_url": None, "title": None,
-                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
-                "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
-            })
-        self._json_response(result)
+            result = kill_pipeline(job_id=job_id)
+            # Also reset the in-memory pipeline state
+            with _pipeline_lock:
+                _pipeline_job.update({
+                    "status": "idle", "topic": None, "message": "",
+                    "video_url": None, "thumbnail_url": None, "title": None,
+                    "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": None,
+                    "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
+                })
+            self._json_response(result)
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).error("Pipeline kill failed: %s", exc)
+            self._json_response({"ok": False, "error": f"Kill failed: {str(exc)}"}, status_code=500)
 
     def _handle_pipeline_cleanup(self) -> None:
         """POST /api/pipeline/cleanup — Force cleanup of all stuck jobs and DB records."""

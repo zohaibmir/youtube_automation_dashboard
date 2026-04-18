@@ -247,7 +247,12 @@ def pipeline_status() -> dict:
 
 
 def kill_pipeline(job_id: str | None = None) -> dict:
-    """Kill a running pipeline job. If job_id is None, kills all running jobs."""
+    """Kill a running pipeline job. If job_id is None, kills all running jobs.
+    
+    Note: Pipeline jobs run as daemon threads within the server process.
+    We avoid os.kill() on the server's own PID to prevent killing the server.
+    Instead, we just mark the job as killed; the thread will finish naturally.
+    """
     killed = []
     jobs = list_jobs()
     targets = [j for j in jobs if j["status"] == "running"]
@@ -255,12 +260,18 @@ def kill_pipeline(job_id: str | None = None) -> dict:
         targets = [j for j in targets if j["job_id"] == job_id]
     if not targets:
         return {"ok": True, "message": "No running pipeline jobs found"}
+    
+    server_pid = os.getpid()
     for job in targets:
         pid = job.get("pid", 0)
         try:
-            if _is_pid_alive(pid):
+            # Safety check: don't kill the server process itself (jobs run as threads, not subprocesses)
+            if pid and pid != server_pid and _is_pid_alive(pid):
                 os.kill(pid, signal.SIGTERM)
                 logger.info("Killed job %s (PID %d)", job["job_id"], pid)
+            else:
+                # Job is running as a thread in this process — just mark it done
+                logger.info("Marking job %s as killed (in-process thread, PID %d)", job["job_id"], pid)
             _finish_job(job["job_id"], error="killed by user")
             killed.append(job["job_id"])
         except Exception as e:

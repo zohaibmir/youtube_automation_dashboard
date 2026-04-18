@@ -32,6 +32,7 @@ from config import (
     FFMPEG_PRESET,
     FFMPEG_THREADS,
     INTRO_DURATION,
+    INTRO_POSITION,
     KEN_BURNS_ZOOM,
     OUTPUT_DIR,
     OUTRO_CTA_TEXT,
@@ -378,8 +379,13 @@ def build_video(
     cf = CROSSFADE_DURATION
     channel_name = channel_name or _resolve_channel_name()
 
-    # ── Intro ─────────────────────────────────────────────────────────────────
-    intro_clip = _make_intro(channel_name, INTRO_DURATION, channel_subtitle=channel_subtitle)
+    # ── Intro (placement configurable: off|start|end) ─────────────────────────
+    intro_position = (INTRO_POSITION or "end").strip().lower()
+    if intro_position not in ("off", "start", "end"):
+        intro_position = "end"
+    intro_clip = None
+    if intro_position != "off":
+        intro_clip = _make_intro(channel_name, INTRO_DURATION, channel_subtitle=channel_subtitle)
 
     # ── Content segments ──────────────────────────────────────────────────────
     clips = []
@@ -453,9 +459,11 @@ def build_video(
 
     # ── Assemble with crossfades ──────────────────────────────────────────────
     all_clips = []
-    if intro_clip:
+    if intro_clip and intro_position == "start":
         all_clips.append(intro_clip)
     all_clips.extend(clips)
+    if intro_clip and intro_position == "end":
+        all_clips.append(intro_clip)
     if outro_clip:
         all_clips.append(outro_clip)
 
