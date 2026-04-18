@@ -31,7 +31,13 @@ _POLL_INTERVAL = 5    # seconds between status checks
 # ── JWT auth ──────────────────────────────────────────────────────────────────
 
 def _make_jwt() -> str:
-    """Generate a short-lived JWT for Kling API authentication."""
+    """Generate a short-lived JWT for Kling API authentication.
+    
+    Uses HS256 algorithm with:
+      - iss: Access Key (KLING_API_KEY)
+      - exp: Expiration timestamp (30 minutes from now)
+      - nbf: Not-before timestamp (5 seconds ago to account for clock skew)
+    """
     try:
         import jwt as _jwt
     except ImportError:
@@ -40,18 +46,65 @@ def _make_jwt() -> str:
         )
     now = int(time.time())
     payload = {
-        "iss": KLING_API_KEY,
-        "exp": now + 1800,
-        "nbf": now - 5,
+        "iss": KLING_API_KEY,      # Access Key as issuer
+        "exp": now + 1800,          # Expires in 30 minutes
+        "nbf": now - 5,             # Valid from 5 seconds ago
     }
     return _jwt.encode(payload, KLING_API_SECRET, algorithm="HS256")
 
 
 def _headers() -> dict:
+    """Generate request headers with JWT Bearer token."""
     return {
         "Authorization": f"Bearer {_make_jwt()}",
         "Content-Type": "application/json",
     }
+
+
+def check_balance() -> dict:
+    """Check Kling AI account balance and quota.
+    
+    Returns dict with balance info if available, or raises error.
+    """
+    if not KLING_API_KEY or not KLING_API_SECRET:
+        raise RuntimeError("KLING_API_KEY and KLING_API_SECRET must be set")
+    
+    # Test with a minimal API call
+    test_payload = {
+        "model_name": "kling-v1",
+        "prompt": "test",
+        "mode": "std",
+        "aspect_ratio": "9:16",
+        "duration": "5",
+    }
+    try:
+        resp = requests.post(_TEXT2VIDEO, headers=_headers(), json=test_payload, timeout=10)
+        if resp.status_code == 429:
+            error_data = resp.json()
+            if error_data.get("code") == 1102:
+                return {
+                    "status": "insufficient_balance",
+                    "message": "Account has no credits. Add credits at https://kling.ai/pricing",
+                    "authenticated": True,
+                }
+        if resp.status_code == 401 or resp.status_code == 403:
+            return {
+                "status": "auth_failed",
+                "message": "Invalid API credentials",
+                "authenticated": False,
+            }
+        # If we get here, credentials are valid and balance is OK
+        return {
+            "status": "ok",
+            "message": "Account authenticated with sufficient balance",
+            "authenticated": True,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "authenticated": False,
+        }
 
 
 # ── Single clip generation ────────────────────────────────────────────────────
@@ -68,10 +121,33 @@ def _submit_text2video(prompt: str, aspect_ratio: str = "16:9", duration: str = 
         "duration": duration,
     }
     resp = requests.post(_TEXT2VIDEO, headers=_headers(), json=payload, timeout=30)
+    
+    # Handle insufficient balance error specifically
+    if resp.status_code == 429:
+        try:
+            error_data = resp.json()
+            if error_data.get("code") == 1102:
+                raise RuntimeError(
+                    "Kling AI account balance insufficient. Please add credits at https://kling.ai/pricing\n"
+                    "Current plans:\n"
+                    "  • Free: 66 credits/day (testing only)\n"
+                    "  • Starter: $9/month (1,500 credits)\n"
+                    "  • Standard: $29/month (6,000 credits) - Recommended\n"
+                    "  • Pro: $99/month (25,000 credits)"
+                )
+        except (ValueError, KeyError):
+            pass
+    
     resp.raise_for_status()
     data = resp.json()
     if data.get("code") != 0:
-        raise RuntimeError(f"Kling API error: {data.get('message', data)}")
+        error_msg = data.get("message", str(data))
+        if "balance" in error_msg.lower() or "credit" in error_msg.lower():
+            raise RuntimeError(
+                f"Kling AI error: {error_msg}\n"
+                "Add credits at https://kling.ai/pricing"
+            )
+        raise RuntimeError(f"Kling API error: {error_msg}")
     return data["data"]["task_id"]
 
 
@@ -193,7 +269,10 @@ def generate_animated_short(
     out_dir: str = IMAGES_DIR,
     aspect_ratio: str = "9:16",
 ) -> list[str]:
-    """Generate a set of animated clips from a list of hook prompts for one Short.
+    """Generate a set of animated clips for STANDALONE shorts (NOT from main video).
+    
+    Used by shorts_pipeline.py for pure short-form content generation.
+    Each hook becomes one animated clip. These are NOT extracted from a long video.
 
     Returns list of local MP4 paths.
     """

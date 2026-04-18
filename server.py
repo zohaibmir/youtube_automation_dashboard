@@ -157,7 +157,7 @@ def _db_queue() -> list:
     try:
         conn = get_conn()
         rows = conn.execute(
-            "SELECT id, topic, type, scheduled, status, priority, added_at "
+            "SELECT id, topic, channel_slug, type, scheduled, status, priority, added_at "
             "FROM topic_queue ORDER BY "
             "CASE WHEN status='pending' THEN 0 ELSE 1 END, priority ASC, id DESC LIMIT 200"
         ).fetchall()
@@ -436,6 +436,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json_response({"jobs": list_jobs()})
         elif path == "/api/channels":
             self._handle_channels_get()
+        elif path == "/api/channel-profiles":
+            self._handle_channel_profiles_get()
+        elif path.startswith("/api/channel-profiles/"):
+            self._handle_channel_profile_get(path)
         elif path == "/api/channels/oauth/callback":
             self._handle_channel_oauth_callback()
         elif path == "/api/youtube/oauth-diagnostics":
@@ -509,6 +513,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_channels_import_tokens()
         elif path == "/api/channels/default":
             self._handle_channel_set_default()
+        elif path == "/api/channel-profiles":
+            self._handle_channel_profile_upsert()
+        elif path.startswith("/api/channel-profiles/"):
+            self._handle_channel_profile_upsert(path)
         elif path.startswith("/api/channels/") and path.endswith("/voice"):
             self._handle_channel_voice_post(path)
         elif path == "/api/social/config":
@@ -624,7 +632,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def _handle_scheduler_run_next(self) -> None:
         """Dequeue the next pending topic and run the pipeline — same logic as the scheduler."""
         try:
-            from topic_queue import dequeue_topic, mark_topic_done, mark_topic_failed, pending_count
+            from topic_queue import dequeue_topic_item, mark_topic_done, mark_topic_failed, pending_count
             from config import SCHEDULER_CHANNEL, SCHEDULER_SHORTS_COUNT
         except Exception as ex:
             self._json_response({"ok": False, "error": f"Import error: {ex}"}); return
@@ -632,10 +640,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         with _pipeline_lock:
             if _pipeline_job["status"] == "running":
                 self._json_response({"ok": False, "error": "Pipeline already running"}); return
-
-        topic = dequeue_topic()
-        if not topic:
-            self._json_response({"ok": False, "error": "Queue is empty — no pending topics"}); return
 
         # Read optional channel override from request body
         channel_slug = None
@@ -657,26 +661,39 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         except Exception:
             shorts_count = 2
 
+        item = dequeue_topic_item(channel_slug=channel_slug)
+        if not item:
+            self._json_response({"ok": False, "error": "Queue is empty — no pending topics"}); return
+
+        topic = item["topic"]
+        topic_id = item["id"]
+        effective_channel = channel_slug or item.get("channel_slug")
+
         with _pipeline_lock:
             _pipeline_job.update({
                 "status": "running", "topic": topic, "message": "Starting…",
                 "video_url": None, "thumbnail_url": None, "title": None,
-                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": channel_slug,
+                "vid_db_id": None, "youtube_url": None, "error": None, "channel_slug": effective_channel,
                 "_content": None, "_video_path": None, "_thumb_path": None, "_shorts_paths": [],
             })
 
         def _bg():
             try:
-                _run_pipeline_bg(topic, channel_slug=channel_slug, shorts_count=shorts_count)
-                mark_topic_done(topic)
+                _run_pipeline_bg(topic, channel_slug=effective_channel, shorts_count=shorts_count)
+                with _pipeline_lock:
+                    status = _pipeline_job.get("status")
+                if status == "ready":
+                    mark_topic_done(topic_id=topic_id)
+                else:
+                    mark_topic_failed(topic_id=topic_id)
             except Exception as exc:
-                mark_topic_failed(topic)
+                mark_topic_failed(topic_id=topic_id)
                 with _pipeline_lock:
                     _pipeline_job.update({"status": "failed", "error": str(exc)})
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
-        self._json_response({"ok": True, "topic": topic, "shorts_count": shorts_count})
+        self._json_response({"ok": True, "topic": topic, "topic_id": topic_id, "channel_slug": effective_channel, "shorts_count": shorts_count})
 
     def _handle_pipeline_upload(self) -> None:
         if not _DB_AVAILABLE:
@@ -760,7 +777,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         """GET /api/queue/pending — pending queue in run-next order."""
         try:
             from topic_queue import get_pending_topics
-            self._json_response({"ok": True, "items": get_pending_topics(limit=300)})
+            qs = parse_qs(urlparse(self.path).query)
+            channel_slug = (qs.get("channel_slug") or [""])[0].strip() or None
+            self._json_response({"ok": True, "items": get_pending_topics(limit=300, channel_slug=channel_slug)})
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
 
@@ -798,6 +817,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             topics = data.get("topics") if isinstance(data, dict) else None
             clear_existing = bool(data.get("clear_existing", True)) if isinstance(data, dict) else True
             topic_type = (data.get("topic_type") or "AI-generated").strip() if isinstance(data, dict) else "AI-generated"
+            channel_slug = (data.get("channel_slug") or "").strip() if isinstance(data, dict) else ""
+            channel_slug = channel_slug or None
 
             if not isinstance(topics, list) or not topics:
                 self._json_response({"ok": False, "error": "topics list is required"})
@@ -811,16 +832,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if clear_existing:
                 from database import _conn
                 with _conn() as conn:
-                    conn.execute("DELETE FROM topic_queue")
+                    if channel_slug:
+                        conn.execute("DELETE FROM topic_queue WHERE channel_slug=?", (channel_slug,))
+                    else:
+                        conn.execute("DELETE FROM topic_queue")
                     conn.commit()
 
             from topic_queue import enqueue_topics, pending_count
-            added = enqueue_topics(clean_topics, topic_type=topic_type)
+            added = enqueue_topics(clean_topics, topic_type=topic_type, channel_slug=channel_slug)
             self._json_response({
                 "ok": True,
                 "added": added,
-                "pending": pending_count(),
+                "pending": pending_count(channel_slug=channel_slug),
                 "cleared": clear_existing,
+                "channel_slug": channel_slug,
             })
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
@@ -835,20 +860,87 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             data = json.loads(self.rfile.read(length)) if length else {}
             topic = (data.get("topic") or "").strip() if isinstance(data, dict) else ""
             topic_type = (data.get("type") or "Manual").strip() if isinstance(data, dict) else "Manual"
+            channel_slug = (data.get("channel_slug") or "").strip() if isinstance(data, dict) else ""
+            channel_slug = channel_slug or None
 
             if not topic:
                 self._json_response({"ok": False, "error": "topic is required"})
                 return
 
             from topic_queue import enqueue_topics, pending_count
-            added = enqueue_topics([topic], topic_type=topic_type)
+            added = enqueue_topics([topic], topic_type=topic_type, channel_slug=channel_slug)
             self._json_response({
                 "ok": True,
                 "added": added,
-                "pending": pending_count(),
+                "pending": pending_count(channel_slug=channel_slug),
+                "channel_slug": channel_slug,
             })
         except Exception as exc:
             self._json_response({"ok": False, "error": str(exc)})
+
+    def _handle_channel_profiles_get(self) -> None:
+        """GET /api/channel-profiles — list all channel profiles."""
+        if not self._is_request_allowed(require_localhost=False):
+            return
+        try:
+            from database import _conn
+            with _conn() as conn:
+                rows = conn.execute(
+                    "SELECT channel_slug, channel_name, channel_subtitle, niche, audience, language, visual_mode, shorts_visual_mode, updated_at "
+                    "FROM channel_profiles ORDER BY channel_slug"
+                ).fetchall()
+            self._json_response({"ok": True, "profiles": [dict(r) for r in rows]})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_profile_get(self, path: str) -> None:
+        """GET /api/channel-profiles/<slug> — get effective profile for one channel."""
+        if not self._is_request_allowed(require_localhost=False):
+            return
+        try:
+            slug = path.replace("/api/channel-profiles/", "").strip("/")
+            if not slug:
+                self._json_response({"ok": False, "error": "slug required"})
+                return
+            from database import get_channel_profile
+            self._json_response({"ok": True, "profile": get_channel_profile(slug)})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
+
+    def _handle_channel_profile_upsert(self, path: str | None = None) -> None:
+        """POST /api/channel-profiles[/<slug>] — upsert channel profile."""
+        if not self._is_request_allowed(require_localhost=False):
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length)) if length else {}
+            if not isinstance(data, dict):
+                self._json_response({"ok": False, "error": "invalid body"})
+                return
+
+            slug = ""
+            if path and path.startswith("/api/channel-profiles/"):
+                slug = path.replace("/api/channel-profiles/", "").strip("/")
+            slug = slug or (data.get("channel_slug") or "").strip()
+            if not slug:
+                self._json_response({"ok": False, "error": "channel_slug is required"})
+                return
+
+            fields = {
+                "channel_name": (data.get("channel_name") or "").strip() or None,
+                "channel_subtitle": (data.get("channel_subtitle") or "").strip() or None,
+                "niche": (data.get("niche") or "").strip() or None,
+                "audience": (data.get("audience") or "").strip() or None,
+                "language": (data.get("language") or "").strip() or None,
+                "visual_mode": (data.get("visual_mode") or "").strip() or None,
+                "shorts_visual_mode": (data.get("shorts_visual_mode") or "").strip() or None,
+            }
+
+            from database import get_channel_profile, upsert_channel_profile
+            upsert_channel_profile(slug, **fields)
+            self._json_response({"ok": True, "profile": get_channel_profile(slug)})
+        except Exception as e:
+            self._json_response({"ok": False, "error": str(e)})
 
     def _handle_queue_delete(self, path: str) -> None:
         """DELETE/POST /api/queue/delete/<id> — delete a single queue item."""

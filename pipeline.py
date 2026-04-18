@@ -63,7 +63,7 @@ def _recover_stale_jobs() -> None:
 _recover_stale_jobs()
 
 from content_generator import generate_script, script_text_to_segments
-from database import log_cost, log_video_complete, log_video_error, log_video_start, get_video_record, is_video_uploaded
+from database import get_channel_profile, log_cost, log_video_complete, log_video_error, log_video_start, get_video_record, is_video_uploaded
 from shorts_builder import build_shorts
 from thumbnail import make_thumbnail
 from video_builder import build_video
@@ -326,6 +326,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         The YouTube video ID on success.
     """
     shorts_count = _resolve_shorts_count(shorts_count)
+    profile = get_channel_profile(channel_slug)
 
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
@@ -334,8 +335,13 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
     _register_job(job_id, topic, os.getpid())
     logger.info("[job=%s] Pipeline starting: %s", job_id, topic)
-    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
-    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
+    effective_language = normalize_language(language or profile.get("language") or CHANNEL_LANGUAGE or "english")
+    effective_niche = profile.get("niche") or CHANNEL_NICHE
+    effective_audience = profile.get("audience")
+    effective_visual_mode = profile.get("visual_mode") or VISUAL_MODE
+    effective_channel_name = profile.get("channel_name")
+    effective_channel_subtitle = profile.get("channel_subtitle")
+    vid_id = log_video_start(topic, effective_niche, effective_language, channel_slug=channel_slug)
 
     try:
         generated_segments = None
@@ -347,6 +353,8 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 topic,
                 seo_override=seo,
                 language=effective_language,
+                niche=effective_niche,
+                audience=effective_audience,
                 duration_hint=duration_hint,
             )
             usage = content.pop("_usage", {})
@@ -359,6 +367,8 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
                 guidance=guidance,
                 max_tokens=8000,
                 language=effective_language,
+                niche=effective_niche,
+                audience=effective_audience,
                 duration_hint=duration_hint,
             )
             # Freeze AI-generated script body so later metadata edits never
@@ -387,7 +397,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
         # Step 3 — Stock visuals (into isolated images dir)
-        if VISUAL_MODE == "videos":
+        if effective_visual_mode == "videos":
             visual_files = fetch_segment_videos(segments, out_dir=images_dir)
             log_cost("pexels", "video_search", units=len(segments), cost_usd=0.0, video_id=vid_id)
         else:
@@ -413,7 +423,9 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
         # Step 5 — Video assembly
         music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
         video_path = build_video(segments, audio_files, visual_files,
-                                 title=content.get("title"), music_path=music)
+                                 title=content.get("title"), music_path=music,
+                                 channel_name=effective_channel_name,
+                                 channel_subtitle=effective_channel_subtitle)
 
         # Step 5a — Inject YouTube chapters into description (if enabled)
         if AUTO_CHAPTERS:
@@ -462,7 +474,7 @@ def run(topic: str, script_text: str | None = None, seo: dict | None = None,
 
         # Step 8 — Pin first comment (if enabled)
         if PIN_FIRST_COMMENT and youtube_id:
-            ch_name = CHANNEL_NAME or "this channel"
+            ch_name = effective_channel_name or CHANNEL_NAME or "this channel"
             comment = (
                 PINNED_COMMENT_TEXT
                 or f"⬇️ WATCH NEXT — more signs & prophecies on {ch_name}\n"
@@ -515,6 +527,7 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         logger.info(msg)
 
     shorts_count = _resolve_shorts_count(shorts_count)
+    profile = get_channel_profile(channel_slug)
 
     job_id, job_dir = _new_job_dir()
     images_dir = os.path.join(job_dir, "images")
@@ -522,8 +535,13 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
     thumb_out  = os.path.join(job_dir, "thumbnail.jpg")
 
     _register_job(job_id, topic, os.getpid())
-    effective_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
-    vid_id = log_video_start(topic, CHANNEL_NICHE, effective_language)
+    effective_language = normalize_language(language or profile.get("language") or CHANNEL_LANGUAGE or "english")
+    effective_niche = profile.get("niche") or CHANNEL_NICHE
+    effective_audience = profile.get("audience")
+    effective_visual_mode = profile.get("visual_mode") or VISUAL_MODE
+    effective_channel_name = profile.get("channel_name")
+    effective_channel_subtitle = profile.get("channel_subtitle")
+    vid_id = log_video_start(topic, effective_niche, effective_language, channel_slug=channel_slug)
     try:
         generated_segments = None
         # Step 1 — Script
@@ -534,6 +552,8 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 topic,
                 seo_override=seo,
                 language=effective_language,
+                niche=effective_niche,
+                audience=effective_audience,
                 duration_hint=duration_hint,
             )
             usage = content.pop("_usage", {})
@@ -546,6 +566,8 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
                 topic,
                 guidance=guidance,
                 language=effective_language,
+                niche=effective_niche,
+                audience=effective_audience,
                 duration_hint=duration_hint,
             )
             # Freeze AI-generated script body so later metadata edits never
@@ -572,13 +594,13 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         )
         log_cost("elevenlabs", "tts", units=len(segments) * 300, cost_usd=0.05, video_id=vid_id)
 
-        _p(f"Fetching visuals ({VISUAL_MODE}) for {len(segments)} segments…")
-        if VISUAL_MODE == "animated":
+        _p(f"Fetching visuals ({effective_visual_mode}) for {len(segments)} segments…")
+        if effective_visual_mode == "animated":
             from animated_visual_fetcher import fetch_animated_clips
             visual_files = fetch_animated_clips(segments, out_dir=images_dir)
             clip_cost = len(segments) * 0.14
             log_cost("kling", "text2video", units=len(segments), cost_usd=clip_cost, video_id=vid_id)
-        elif VISUAL_MODE == "videos":
+        elif effective_visual_mode == "videos":
             visual_files = fetch_segment_videos(segments, out_dir=images_dir)
             log_cost("pexels", "video_search", units=len(segments), cost_usd=0.0, video_id=vid_id)
         else:
@@ -605,7 +627,9 @@ def run_preview(topic: str, progress_cb=None, script_text: str | None = None,
         _p("Building video (this may take a few minutes)…")
         music = BG_MUSIC_PATH if BG_MUSIC_PATH else None
         video_path = build_video(segments, audio_files, visual_files,
-                                 title=content.get("title"), music_path=music)
+                                 title=content.get("title"), music_path=music,
+                                 channel_name=effective_channel_name,
+                                 channel_subtitle=effective_channel_subtitle)
 
         if shorts_count and shorts_count > 0:
             _p(f"Building {shorts_count} YouTube Short(s)…")

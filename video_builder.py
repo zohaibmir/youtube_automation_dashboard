@@ -26,6 +26,7 @@ from config import (
     AUTO_END_SCREENS,
     BG_MUSIC_VOLUME_DB,
     CHANNEL_NAME,
+    CHANNEL_SUBTITLE,
     CROSSFADE_DURATION,
     END_SCREEN_DURATION,
     FFMPEG_PRESET,
@@ -190,7 +191,7 @@ def _apply_ken_burns(clip, duration: float, zoom_pct: float = 0.05, is_static: b
 
 # ── Intro / Outro ─────────────────────────────────────────────────────────────
 
-def _make_intro(channel_name: str, duration: float):
+def _make_intro(channel_name: str, duration: float, channel_subtitle: str | None = None):
     """Create a branded intro clip: dark background → channel name fades in."""
     if duration <= 0:
         return None
@@ -205,16 +206,16 @@ def _make_intro(channel_name: str, duration: float):
     bbox = draw.textbbox((0, 0), channel_name, font=font_big)
     tw = bbox[2] - bbox[0]
     tx = (_VIDEO_WIDTH - tw) // 2
-    ty = _VIDEO_HEIGHT // 2 - 50
+    ty = _VIDEO_HEIGHT // 2 - 30  # Center it better
     draw.text((tx, ty), channel_name, font=font_big, fill=(255, 255, 255))
 
-    # Subtle tagline
-    tagline = "▶  " + OUTRO_CTA_TEXT + "  ▶"
-    bbox2 = draw.textbbox((0, 0), tagline, font=font_sub)
+    # Subtitle from config instead of CTA
+    subtitle = channel_subtitle or CHANNEL_SUBTITLE
+    bbox2 = draw.textbbox((0, 0), subtitle, font=font_sub)
     tw2 = bbox2[2] - bbox2[0]
     draw.text(
         ((_VIDEO_WIDTH - tw2) // 2, ty + 90),
-        tagline, font=font_sub, fill=(124, 109, 250)
+        subtitle, font=font_sub, fill=(160, 160, 180)
     )
 
     intro = ImageClip(np.array(img)).set_duration(duration)
@@ -347,6 +348,8 @@ def build_video(
     output_path: str | None = None,
     title: str | None = None,
     music_path: str | None = None,
+    channel_name: str | None = None,
+    channel_subtitle: str | None = None,
 ) -> str:
     """Assemble per-segment visual + audio + caption into MP4.
 
@@ -373,10 +376,10 @@ def build_video(
         output_path = f"{OUTPUT_DIR}/{slug}.mp4"
 
     cf = CROSSFADE_DURATION
-    channel_name = _resolve_channel_name()
+    channel_name = channel_name or _resolve_channel_name()
 
     # ── Intro ─────────────────────────────────────────────────────────────────
-    intro_clip = _make_intro(channel_name, INTRO_DURATION)
+    intro_clip = _make_intro(channel_name, INTRO_DURATION, channel_subtitle=channel_subtitle)
 
     # ── Content segments ──────────────────────────────────────────────────────
     clips = []

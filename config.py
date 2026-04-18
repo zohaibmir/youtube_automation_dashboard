@@ -107,6 +107,13 @@ KLING_API_SECRET: str = os.getenv("KLING_API_SECRET", "")
 # animated = Kling AI generated animation per segment (~$0.14/clip, requires KLING_API_KEY)
 VISUAL_MODE: str = os.getenv("VISUAL_MODE", "images")  # images | videos | animated
 
+# COMPANION Shorts visual mode override (defaults to VISUAL_MODE if not set)
+# This ONLY affects the 2 companion shorts extracted FROM each main video.
+# Set SHORTS_VISUAL_MODE=animated to use Kling AI for companion shorts while keeping
+# main videos on Pexels. Cost-effective: ~3-4 clips/short vs 8-10/video.
+# NOTE: Standalone animated shorts (via /api/shorts/generate-animated) ALWAYS use Kling.
+SHORTS_VISUAL_MODE: str = os.getenv("SHORTS_VISUAL_MODE", VISUAL_MODE)
+
 # ── Video Production ──────────────────────────────────────────────────────────
 # Ken Burns slow-zoom percentage per clip (0.0 = disabled, 0.05 = 5% zoom)
 KEN_BURNS_ZOOM: float = float(os.getenv("KEN_BURNS_ZOOM", "0.05"))
@@ -122,6 +129,8 @@ INTRO_DURATION: float = float(os.getenv("INTRO_DURATION", "4"))
 OUTRO_DURATION: float = float(os.getenv("OUTRO_DURATION", "5"))
 # Outro CTA text shown in the end card
 OUTRO_CTA_TEXT: str = os.getenv("OUTRO_CTA_TEXT", "LIKE · SUBSCRIBE · SHARE")
+# Channel subtitle shown in intro (instead of subscribe nag)
+CHANNEL_SUBTITLE: str = os.getenv("CHANNEL_SUBTITLE", "Truth That Never Shared")
 
 # ── Reddit Distribution ──────────────────────────────────────────────────────
 # Enable auto-posting to Reddit after each upload

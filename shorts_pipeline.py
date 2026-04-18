@@ -1,6 +1,11 @@
-"""shorts_pipeline.py - dedicated animated Shorts orchestration.
+"""shorts_pipeline.py - STANDALONE animated Shorts orchestration.
 
-This module keeps Shorts-only generation/distribution separate from the
+This module generates pure animated shorts using Kling AI WITHOUT creating a main video.
+These are independent short-form content pieces, NOT extracted from long videos.
+
+For companion shorts extracted FROM main videos, see shorts_builder.py instead.
+
+This module keeps standalone Shorts-only generation/distribution separate from the
 long-form pipeline flow in pipeline.py.
 """
 

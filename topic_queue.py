@@ -17,20 +17,26 @@ _REFILL_THRESHOLD = 5
 _MAX_RETRIES = 3
 
 
-def enqueue_topics(topics: list[str], topic_type: str = "AI-generated") -> int:
+def enqueue_topics(topics: list[str], topic_type: str = "AI-generated", channel_slug: str | None = None) -> int:
     """Insert topics into the queue with status='pending'.
 
     Returns the number of rows inserted.
     """
     with _conn() as conn:
-        base_priority = conn.execute(
-            "SELECT COALESCE(MAX(priority), 0) FROM topic_queue WHERE status='pending'"
-        ).fetchone()[0]
+        if channel_slug:
+            base_priority = conn.execute(
+                "SELECT COALESCE(MAX(priority), 0) FROM topic_queue WHERE status='pending' AND channel_slug=?",
+                (channel_slug,),
+            ).fetchone()[0]
+        else:
+            base_priority = conn.execute(
+                "SELECT COALESCE(MAX(priority), 0) FROM topic_queue WHERE status='pending' AND channel_slug IS NULL"
+            ).fetchone()[0]
         rows = []
         for idx, t in enumerate(topics, start=1):
-            rows.append((t, topic_type, int(base_priority) + idx))
+            rows.append((t, channel_slug, topic_type, int(base_priority) + idx))
         conn.executemany(
-            "INSERT INTO topic_queue (topic, type, status, priority) VALUES (?, ?, 'pending', ?)",
+            "INSERT INTO topic_queue (topic, channel_slug, type, status, priority) VALUES (?, ?, ?, 'pending', ?)",
             rows,
         )
         conn.commit()
@@ -39,7 +45,7 @@ def enqueue_topics(topics: list[str], topic_type: str = "AI-generated") -> int:
     return added
 
 
-def dequeue_topic() -> str | None:
+def dequeue_topic_item(channel_slug: str | None = None) -> dict | None:
     """Pop and return the next pending topic (max retries not exceeded).
 
     Uses BEGIN EXCLUSIVE to prevent two concurrent callers from
@@ -49,12 +55,20 @@ def dequeue_topic() -> str | None:
     with _conn() as conn:
         conn.execute("BEGIN EXCLUSIVE")
         try:
-            row = conn.execute(
-                "SELECT id, topic FROM topic_queue "
-                "WHERE status='pending' AND retry_count < ? "
-                "ORDER BY priority ASC, id ASC LIMIT 1",
-                (_MAX_RETRIES,),
-            ).fetchone()
+            if channel_slug:
+                row = conn.execute(
+                    "SELECT id, topic, channel_slug FROM topic_queue "
+                    "WHERE status='pending' AND retry_count < ? AND channel_slug=? "
+                    "ORDER BY priority ASC, id ASC LIMIT 1",
+                    (_MAX_RETRIES, channel_slug),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT id, topic, channel_slug FROM topic_queue "
+                    "WHERE status='pending' AND retry_count < ? "
+                    "ORDER BY priority ASC, id ASC LIMIT 1",
+                    (_MAX_RETRIES,),
+                ).fetchone()
             if not row:
                 conn.rollback()
                 return None
@@ -62,72 +76,120 @@ def dequeue_topic() -> str | None:
                 "UPDATE topic_queue SET status='processing' WHERE id=?", (row["id"],)
             )
             conn.commit()
-            logger.info("Dequeued topic: %s", row["topic"])
-            return row["topic"]
+            item = {"id": row["id"], "topic": row["topic"], "channel_slug": row["channel_slug"]}
+            logger.info("Dequeued topic: %s (id=%s channel=%s)", item["topic"], item["id"], item["channel_slug"])
+            return item
         except Exception:
             conn.rollback()
             raise
 
 
-def mark_topic_done(topic: str) -> None:
+def dequeue_topic(channel_slug: str | None = None) -> str | None:
+    """Backward-compatible wrapper that returns only topic text."""
+    item = dequeue_topic_item(channel_slug=channel_slug)
+    return item["topic"] if item else None
+
+
+def mark_topic_done(topic: str | None = None, channel_slug: str | None = None, topic_id: int | None = None) -> None:
     """Mark the most recent 'processing' instance of a topic as 'done'."""
     with _conn() as conn:
-        conn.execute(
-            "UPDATE topic_queue SET status='done' WHERE topic=? AND status='processing'",
-            (topic,),
-        )
+        if topic_id is not None:
+            conn.execute(
+                "UPDATE topic_queue SET status='done' WHERE id=? AND status='processing'",
+                (int(topic_id),),
+            )
+        elif topic:
+            if channel_slug:
+                conn.execute(
+                    "UPDATE topic_queue SET status='done' WHERE topic=? AND channel_slug=? AND status='processing'",
+                    (topic, channel_slug),
+                )
+            else:
+                conn.execute(
+                    "UPDATE topic_queue SET status='done' WHERE topic=? AND status='processing'",
+                    (topic,),
+                )
         conn.commit()
 
 
-def mark_topic_failed(topic: str) -> None:
+def mark_topic_failed(topic: str | None = None, channel_slug: str | None = None, topic_id: int | None = None) -> None:
     """Re-queue a failed topic with incremented retry count.
 
     Topics that exceed _MAX_RETRIES attempts stay as 'failed' permanently.
     """
     with _conn() as conn:
-        row = conn.execute(
-            "SELECT id, retry_count FROM topic_queue "
-            "WHERE topic=? AND status='processing' ORDER BY id DESC LIMIT 1",
-            (topic,),
-        ).fetchone()
+        if topic_id is not None:
+            row = conn.execute(
+                "SELECT id, topic, retry_count FROM topic_queue "
+                "WHERE id=? AND status='processing' ORDER BY id DESC LIMIT 1",
+                (int(topic_id),),
+            ).fetchone()
+        elif topic and channel_slug:
+            row = conn.execute(
+                "SELECT id, topic, retry_count FROM topic_queue "
+                "WHERE topic=? AND channel_slug=? AND status='processing' ORDER BY id DESC LIMIT 1",
+                (topic, channel_slug),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, topic, retry_count FROM topic_queue "
+                "WHERE topic=? AND status='processing' ORDER BY id DESC LIMIT 1",
+                (topic,),
+            ).fetchone()
         if not row:
             return
         new_count = (row["retry_count"] or 0) + 1
+        topic_text = row["topic"]
         if new_count >= _MAX_RETRIES:
             conn.execute(
                 "UPDATE topic_queue SET status='failed', retry_count=? WHERE id=?",
                 (new_count, row["id"]),
             )
-            logger.error("Topic permanently failed after %d attempts: %s", new_count, topic)
+            logger.error("Topic permanently failed after %d attempts: %s", new_count, topic_text)
         else:
             conn.execute(
                 "UPDATE topic_queue SET status='pending', retry_count=? WHERE id=?",
                 (new_count, row["id"]),
             )
-            logger.warning("Topic re-queued (attempt %d/%d): %s", new_count, _MAX_RETRIES, topic)
+            logger.warning("Topic re-queued (attempt %d/%d): %s", new_count, _MAX_RETRIES, topic_text)
         conn.commit()
 
 
-def pending_count() -> int:
+def pending_count(channel_slug: str | None = None) -> int:
     """Return the number of topics waiting to be processed."""
     with _conn() as conn:
-        count: int = conn.execute(
-            "SELECT COUNT(*) FROM topic_queue WHERE status='pending' AND retry_count < ?",
-            (_MAX_RETRIES,),
-        ).fetchone()[0]
+        if channel_slug:
+            count: int = conn.execute(
+                "SELECT COUNT(*) FROM topic_queue WHERE status='pending' AND retry_count < ? AND channel_slug=?",
+                (_MAX_RETRIES, channel_slug),
+            ).fetchone()[0]
+        else:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM topic_queue WHERE status='pending' AND retry_count < ?",
+                (_MAX_RETRIES,),
+            ).fetchone()[0]
         return count
 
 
-def get_pending_topics(limit: int = 200) -> list[dict]:
+def get_pending_topics(limit: int = 200, channel_slug: str | None = None) -> list[dict]:
     """Return pending topics in dequeue order (top item runs next)."""
     with _conn() as conn:
-        rows = conn.execute(
-            "SELECT id, topic, type, status, priority, added_at "
-            "FROM topic_queue "
-            "WHERE status='pending' AND retry_count < ? "
-            "ORDER BY priority ASC, id ASC LIMIT ?",
-            (_MAX_RETRIES, limit),
-        ).fetchall()
+        if channel_slug:
+            rows = conn.execute(
+                "SELECT id, topic, channel_slug, type, status, priority, added_at "
+                "FROM topic_queue "
+                "WHERE status='pending' AND retry_count < ? AND channel_slug=? "
+                "ORDER BY priority ASC, id ASC LIMIT ?",
+                (_MAX_RETRIES, channel_slug, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, topic, channel_slug, type, status, priority, added_at "
+                "FROM topic_queue "
+                "WHERE status='pending' AND retry_count < ? "
+                "ORDER BY priority ASC, id ASC LIMIT ?",
+                (_MAX_RETRIES, limit),
+            ).fetchall()
         return [dict(r) for r in rows]
 
 

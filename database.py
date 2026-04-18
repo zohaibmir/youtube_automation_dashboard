@@ -10,6 +10,15 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from config import DB_PATH
+from config import (
+    CHANNEL_AUDIENCE,
+    CHANNEL_LANGUAGE,
+    CHANNEL_NAME,
+    CHANNEL_NICHE,
+    CHANNEL_SUBTITLE,
+    SHORTS_VISUAL_MODE,
+    VISUAL_MODE,
+)
 
 
 @contextmanager
@@ -46,6 +55,7 @@ def init_db():
                 title       TEXT,
                 youtube_id  TEXT UNIQUE,
                 status      TEXT DEFAULT 'pending',
+                channel_slug TEXT,
                 niche       TEXT,
                 language    TEXT,
                 duration_s  INTEGER,
@@ -80,12 +90,25 @@ def init_db():
             CREATE TABLE IF NOT EXISTS topic_queue (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 topic       TEXT NOT NULL,
+                channel_slug TEXT,
                 type        TEXT DEFAULT 'Planned',
                 scheduled   TEXT,
                 status      TEXT DEFAULT 'pending',
                 priority    INTEGER DEFAULT 0,
                 retry_count INTEGER DEFAULT 0,
                 added_at    TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS channel_profiles (
+                channel_slug       TEXT PRIMARY KEY,
+                channel_name       TEXT,
+                channel_subtitle   TEXT,
+                niche              TEXT,
+                audience           TEXT,
+                language           TEXT,
+                visual_mode        TEXT,
+                shorts_visual_mode TEXT,
+                updated_at         TEXT DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -115,19 +138,35 @@ def init_db():
             ).fetchall()
             for idx, row in enumerate(rows, start=1):
                 conn.execute("UPDATE topic_queue SET priority=? WHERE id=?", (idx, row[0]))
+        # Add channel_slug to topic_queue if upgrading from older schema
+        try:
+            conn.execute("SELECT channel_slug FROM topic_queue LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE topic_queue ADD COLUMN channel_slug TEXT")
+        # Add channel_slug to videos if upgrading from older schema
+        try:
+            conn.execute("SELECT channel_slug FROM videos LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE videos ADD COLUMN channel_slug TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_topic_queue_priority ON topic_queue(status, priority, id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_topic_queue_channel ON topic_queue(channel_slug, status, priority, id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_slug, created_at DESC)"
         )
         conn.commit()
     print(f"DB ready: {DB_PATH}")
 
 
 # ── Videos ────────────────────────────────────────────────────
-def log_video_start(topic, niche, language):
+def log_video_start(topic, niche, language, channel_slug=None):
     with _conn() as conn:
         cur = conn.execute(
-            "INSERT INTO videos (topic, niche, language, status) VALUES (?,?,?,?)",
-            (topic, niche, language, 'generating')
+            "INSERT INTO videos (topic, channel_slug, niche, language, status) VALUES (?,?,?,?,?)",
+            (topic, channel_slug, niche, language, 'generating')
         )
         vid_id = cur.lastrowid
         conn.commit()
@@ -276,5 +315,68 @@ def save_setting(key: str, value) -> None:
             "INSERT OR REPLACE INTO settings (key, value, updated_at) "
             "VALUES (?, ?, datetime('now'))",
             (key, json.dumps(value, ensure_ascii=False))
+        )
+        conn.commit()
+
+
+def get_channel_profile(channel_slug: str | None = None) -> dict:
+    """Return effective channel profile with .env defaults as fallback."""
+    profile = {
+        "channel_slug": channel_slug,
+        "channel_name": CHANNEL_NAME,
+        "channel_subtitle": CHANNEL_SUBTITLE,
+        "niche": CHANNEL_NICHE,
+        "audience": CHANNEL_AUDIENCE,
+        "language": CHANNEL_LANGUAGE,
+        "visual_mode": VISUAL_MODE,
+        "shorts_visual_mode": SHORTS_VISUAL_MODE,
+    }
+    if not channel_slug:
+        return profile
+
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT channel_slug, channel_name, channel_subtitle, niche, audience, language, visual_mode, shorts_visual_mode "
+            "FROM channel_profiles WHERE channel_slug=?",
+            (channel_slug,),
+        ).fetchone()
+    if not row:
+        return profile
+
+    for k in profile:
+        if k == "channel_slug":
+            continue
+        if row[k] not in (None, ""):
+            profile[k] = row[k]
+    profile["channel_slug"] = row["channel_slug"]
+    return profile
+
+
+def upsert_channel_profile(channel_slug: str, **fields) -> None:
+    """Insert or update a channel profile record."""
+    allowed = {
+        "channel_name",
+        "channel_subtitle",
+        "niche",
+        "audience",
+        "language",
+        "visual_mode",
+        "shorts_visual_mode",
+    }
+    payload = {k: v for k, v in fields.items() if k in allowed}
+    if not payload:
+        return
+
+    cols = ", ".join(payload.keys())
+    placeholders = ", ".join(["?"] * len(payload))
+    updates = ", ".join([f"{k}=excluded.{k}" for k in payload.keys()])
+    values = [payload[k] for k in payload.keys()]
+
+    with _conn() as conn:
+        conn.execute(
+            f"INSERT INTO channel_profiles (channel_slug, {cols}, updated_at) "
+            f"VALUES (?, {placeholders}, datetime('now')) "
+            f"ON CONFLICT(channel_slug) DO UPDATE SET {updates}, updated_at=datetime('now')",
+            [channel_slug, *values],
         )
         conn.commit()

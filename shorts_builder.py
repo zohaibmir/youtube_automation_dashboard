@@ -1,4 +1,9 @@
-"""shorts_builder.py — YouTube Shorts vertical video builder.
+"""shorts_builder.py — COMPANION YouTube Shorts vertical video builder.
+
+Generates 2-3 companion shorts FROM each main video by extracting segments.
+These are NOT standalone shorts — they're derived content from the long-form video.
+
+For STANDALONE animated shorts (no main video), see shorts_pipeline.py instead.
 
 Single responsibility: take existing pipeline segments/audio/visuals
 and produce 1–3 vertical (1080×1920) clips under 60 seconds.
@@ -19,7 +24,7 @@ from moviepy.editor import (
     concatenate_videoclips,
 )
 
-from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, FFMPEG_THREADS, OUTPUT_DIR
+from config import BG_MUSIC_PATH, BG_MUSIC_VOLUME_DB, FFMPEG_THREADS, OUTPUT_DIR, SHORTS_VISUAL_MODE
 from core.text_renderer import render_caption_overlay, slugify as _slugify
 
 logger = logging.getLogger(__name__)
@@ -213,6 +218,9 @@ def build_shorts(
 ) -> list[str]:
     """Generate 1–3 YouTube Shorts from existing pipeline assets.
 
+    If SHORTS_VISUAL_MODE=animated, generates fresh Kling AI clips for shorts.
+    Otherwise reuses visual_files from the main video.
+
     Args:
         segments:     Full list of segment dicts from the long-form video.
         audio_files:  Ordered MP3 paths (one per segment).
@@ -232,9 +240,29 @@ def build_shorts(
     if music_path is None:
         music_path = BG_MUSIC_PATH if BG_MUSIC_PATH else None
 
+    # ── Generate animated visuals for COMPANION shorts if enabled ─────────────
+    # NOTE: This is for companion shorts extracted from the main video.
+    # For standalone animated shorts (no main video), use /api/shorts/generate-animated instead.
+    shorts_visual_files = visual_files  # Default: reuse main video visuals
+    if SHORTS_VISUAL_MODE == "animated":
+        logger.info("SHORTS_VISUAL_MODE=animated: generating Kling AI clips for companion Shorts (9:16)")
+        try:
+            from animated_visual_fetcher import fetch_animated_clips
+            shorts_dir = f"{OUTPUT_DIR}/shorts_companion_animated"
+            Path(shorts_dir).mkdir(parents=True, exist_ok=True)
+            shorts_visual_files = fetch_animated_clips(
+                segments=segments,
+                out_dir=shorts_dir,
+                aspect_ratio="9:16",  # Vertical for Shorts
+            )
+            logger.info("Generated %d animated clips for companion Shorts", len(shorts_visual_files))
+        except Exception as e:
+            logger.error("Failed to generate animated companion shorts visuals: %s — falling back to Pexels", e)
+            shorts_visual_files = visual_files  # Fallback to main video visuals
+
     paths = []
     for idx in range(count):
-        selected = _pick_short_segments(segments, audio_files, visual_files, idx)
+        selected = _pick_short_segments(segments, audio_files, shorts_visual_files, idx)
         if not selected:
             logger.warning("Not enough content for Short #%d — skipping", idx + 1)
             continue

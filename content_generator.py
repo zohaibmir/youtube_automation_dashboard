@@ -135,7 +135,8 @@ def _extract_json(raw: str) -> dict:
 
 
 def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6000,
-                    language: str | None = None, duration_hint: str | None = None) -> dict:
+                    language: str | None = None, niche: str | None = None,
+                    audience: str | None = None, duration_hint: str | None = None) -> dict:
     """Generate a full video script for the given topic.
 
     Args:
@@ -156,9 +157,11 @@ def generate_script(topic: str, guidance: str | None = None, max_tokens: int = 6
 """
 
     script_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
+    script_niche = niche or CHANNEL_NICHE
+    script_audience = audience or CHANNEL_AUDIENCE
     duration_line, duration_rule = _duration_constraints(duration_hint)
 
-    prompt = f"""Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
+    prompt = f"""Niche: {script_niche} | Audience: {script_audience} | Language: {script_language}
 Topic: "{topic}"
 {duration_line}
 {guidance_block}
@@ -201,7 +204,8 @@ For visual_keyword_fallback: use a simpler 1-2 word broad term in case the speci
 
 
 def script_text_to_segments(script_text: str, topic: str, seo_override: dict | None = None,
-                            language: str | None = None, duration_hint: str | None = None) -> dict:
+                            language: str | None = None, niche: str | None = None,
+                            audience: str | None = None, duration_hint: str | None = None) -> dict:
     """Convert a human-written dashboard script into the pipeline's segment format.
 
     Used when the user writes/edits script in the Script Writer tab before
@@ -218,10 +222,12 @@ def script_text_to_segments(script_text: str, topic: str, seo_override: dict | N
         thumbnail_text, thumbnail_subtext, segments.
     """
     script_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
+    script_niche = niche or CHANNEL_NICHE
+    script_audience = audience or CHANNEL_AUDIENCE
     duration_line, duration_rule = _duration_constraints(duration_hint)
 
     prompt = f"""Convert this YouTube script into pipeline segments.
-Niche: {CHANNEL_NICHE} | Audience: {CHANNEL_AUDIENCE} | Language: {script_language}
+Niche: {script_niche} | Audience: {script_audience} | Language: {script_language}
 Topic: "{topic}"
 {duration_line}
 
@@ -275,13 +281,17 @@ For visual_keyword_fallback: 1-2 word broad fallback if specific term has no res
     return result
 
 
-def generate_topic_ideas(count: int = 10) -> list[str]:
+def generate_topic_ideas(count: int = 10, niche: str | None = None,
+                         audience: str | None = None, language: str | None = None) -> list[str]:
     """Generate trending topic ideas for the channel.
 
     Returns a list of topic strings.
     """
-    prompt = f"""Generate {count} trending YouTube topics for a {CHANNEL_NICHE} channel.
-Audience: {CHANNEL_AUDIENCE}. Language: {CHANNEL_LANGUAGE}.
+    topic_niche = niche or CHANNEL_NICHE
+    topic_audience = audience or CHANNEL_AUDIENCE
+    topic_language = normalize_language(language or CHANNEL_LANGUAGE or "english")
+    prompt = f"""Generate {count} trending YouTube topics for a {topic_niche} channel.
+Audience: {topic_audience}. Language: {topic_language}.
 Return ONLY a JSON array of strings.
 Make them clickable and searchable."""
 

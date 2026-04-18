@@ -9,7 +9,7 @@ Usage:
 """
 
 import logging
-import sys
+import argparse
 
 from database import init_db
 from pipeline import run
@@ -22,5 +22,13 @@ logging.basicConfig(
 
 if __name__ == "__main__":
     init_db()
-    topic = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "10 paise bachane ki aadat"
-    run(topic)
+    parser = argparse.ArgumentParser(description="Run YouTube pipeline for a topic")
+    parser.add_argument("topic", nargs="*", help="Topic text")
+    parser.add_argument("--channel", dest="channel_slug", default=None,
+                        help="Channel slug from tokens/channels.json")
+    parser.add_argument("--shorts", dest="shorts_count", type=int, default=None,
+                        help="Number of companion shorts to generate (0-3)")
+    args = parser.parse_args()
+
+    topic = " ".join(args.topic).strip() or "10 paise bachane ki aadat"
+    run(topic, channel_slug=args.channel_slug, shorts_count=args.shorts_count)

@@ -795,6 +795,12 @@ canvas{display:block;width:100%;height:auto}
       <div><label>Topic</label><input type="text" id="q-topic-input" placeholder="e.g. Pakistan mein stock market guide"/></div>
       <div><label>Date</label><input type="date" id="q-date-input" style="display:none"/></div>
     </div>
+    <div style="margin-top:8px;max-width:340px">
+      <label>Queue channel</label>
+      <select id="queue-channel-select" onchange="setSelectedChannel(this.value)">
+        <option value="">🌐 Default channel</option>
+      </select>
+    </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="addManualToQueue()">+ Add</button>
       <button class="btn btn-ghost btn-sm" id="gen-plan-btn" onclick="generateFullPlan()"><span id="gen-plan-icon">&#9889;</span> AI: 4-week plan</button>
@@ -3304,6 +3310,10 @@ function setSelectedChannel(slug) {
     }
   }
   _persistDraftContext();
+  var queuePanel = document.getElementById('panel-queue');
+  if (queuePanel && queuePanel.classList.contains('active')) {
+    loadSchedulerQueuePriority();
+  }
 }
 
 async function getTrending(filter,btnEl){
@@ -3706,7 +3716,7 @@ function addManualToQueue(){
   fetchJsonSafe('/api/queue/add',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({topic:t,type:'Manual'})
+    body:JSON.stringify({topic:t,type:'Manual',channel_slug:selectedChannelSlug||''})
   }).then(function(d){
     if(!d||!d.ok){throw new Error((d&&d.error)||'add failed');}
     document.getElementById('q-topic-input').value='';
@@ -3748,7 +3758,7 @@ function saveQ(){_dbSave('queue_data',queue);}
 function schedulerRunNext(){
   var btn=document.getElementById('sched-run-next-btn');
   if(btn){btn.disabled=true;btn.textContent='Starting…';}
-  fetchJsonSafe('/api/scheduler/run-next',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})
+  fetchJsonSafe('/api/scheduler/run-next',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel_slug:selectedChannelSlug||''})})
     .then(function(data){
       if(data&&data.ok){
         _setInlineError('sched-run-next-btn','',false);
@@ -3770,7 +3780,8 @@ function schedulerRunNext(){
 function loadSchedulerQueuePriority(){
   var statusEl=document.getElementById('queue-priority-status');
   if(statusEl){statusEl.textContent='Loading…';}
-  fetchJsonSafe('/api/queue/pending',{cache:'no-store'})
+  var qs=selectedChannelSlug?('?channel_slug='+encodeURIComponent(selectedChannelSlug)):'';
+  fetchJsonSafe('/api/queue/pending'+qs,{cache:'no-store'})
     .then(function(d){
       if(!d||!d.ok){throw new Error((d&&d.error)||'failed to load scheduler queue');}
       _schedPending=Array.isArray(d.items)?d.items:[];
@@ -3799,7 +3810,9 @@ function renderSchedulerQueuePriority(){
     row.className='qp-item';
     row.setAttribute('draggable','true');
     row.dataset.id=String(item.id);
-    row.innerHTML='<span class="qp-handle">☰</span><span class="qp-rank">#'+(idx+1)+'</span><span class="qp-title">'+esc(item.topic||'')+'</span><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSchedulerQueueItem('+item.id+')" style="padding:3px 7px;margin-left:auto" title="Delete">&#10005;</button>';
+    row.innerHTML='<span class="qp-handle">☰</span><span class="qp-rank">#'+(idx+1)+'</span><span class="qp-title">'+esc(item.topic||'')+'</span>'+
+      '<span class="q-badge q-badge-on" style="margin-left:6px">📺 '+esc(_channelDisplayName(item.channel_slug||''))+'</span>'+
+      '<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSchedulerQueueItem('+item.id+')" style="padding:3px 7px;margin-left:auto" title="Delete">&#10005;</button>';
     row.addEventListener('dragstart', function(){
       _schedDragId=String(item.id);
     });
@@ -4955,6 +4968,7 @@ function clearThumbBg(){
 
 // ===== YOUTUBE CHANNELS (MULTI-CHANNEL) =====
 var _ytChannels = [];
+var _channelProfileCache = {};
 
 function loadYouTubeChannels() {
   fetchJsonSafe('/api/channels').then(function(d){
@@ -5033,6 +5047,33 @@ function renderChannelList() {
     html += '</select>';
     html += '<div style="font-size:9px;color:var(--dim);margin-top:4px">Or test voices in the Voice Test tab</div>';
     html += '</div>';
+
+    // Channel content profile editor
+    html += '<div style="background:var(--bg2);padding:8px;border-radius:5px;border:1px solid var(--border);margin-top:8px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html += '<label style="font-size:11px;color:var(--muted)">Channel content profile</label>';
+    html += '<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px" onclick="saveChannelProfile(\'' + ch.slug + '\')">Save Profile</button>';
+    html += '</div>';
+    html += '<div class="grid2" style="grid-template-columns:1fr 1fr;gap:6px">';
+    html += '<input id="prof-niche-' + ch.slug + '" placeholder="Niche (e.g. history)" />';
+    html += '<input id="prof-audience-' + ch.slug + '" placeholder="Audience (e.g. global)" />';
+    html += '<select id="prof-language-' + ch.slug + '">';
+    html += '<option value="">Language (default)</option>';
+    html += '<option value="english">English</option>';
+    html += '<option value="urdu">Urdu</option>';
+    html += '<option value="hindi">Hindi</option>';
+    html += '<option value="hinglish">Hinglish</option>';
+    html += '</select>';
+    html += '<select id="prof-visual-' + ch.slug + '">';
+    html += '<option value="">Visual mode (default)</option>';
+    html += '<option value="images">images</option>';
+    html += '<option value="videos">videos</option>';
+    html += '<option value="animated">animated</option>';
+    html += '</select>';
+    html += '<input id="prof-subtitle-' + ch.slug + '" placeholder="Intro subtitle override" style="grid-column:1/3" />';
+    html += '</div>';
+    html += '<div id="prof-status-' + ch.slug + '" style="font-size:10px;color:var(--dim);margin-top:5px">Uses global defaults unless overridden.</div>';
+    html += '</div>';
     
     html += '</div>';
   });
@@ -5042,6 +5083,7 @@ function renderChannelList() {
   // Load current voice for each channel
   _ytChannels.forEach(function(ch) {
     loadChannelVoice(ch.slug);
+    loadChannelProfile(ch.slug);
   });
 }
 
@@ -5077,13 +5119,62 @@ function setChannelVoice(slug, voiceId) {
     });
 }
 
+function loadChannelProfile(slug) {
+  fetchJsonSafe('/api/channel-profiles/' + encodeURIComponent(slug), {cache:'no-store'})
+    .then(function(d) {
+      if (!d || !d.ok || !d.profile) return;
+      var p = d.profile;
+      _channelProfileCache[slug] = p;
+      var nicheEl = document.getElementById('prof-niche-' + slug);
+      var audienceEl = document.getElementById('prof-audience-' + slug);
+      var languageEl = document.getElementById('prof-language-' + slug);
+      var visualEl = document.getElementById('prof-visual-' + slug);
+      var subtitleEl = document.getElementById('prof-subtitle-' + slug);
+      if (nicheEl) nicheEl.value = p.niche || '';
+      if (audienceEl) audienceEl.value = p.audience || '';
+      if (languageEl) languageEl.value = p.language || '';
+      if (visualEl) visualEl.value = p.visual_mode || '';
+      if (subtitleEl) subtitleEl.value = p.channel_subtitle || '';
+      var statusEl = document.getElementById('prof-status-' + slug);
+      if (statusEl) statusEl.textContent = 'Profile loaded.';
+    })
+    .catch(function() {});
+}
+
+function saveChannelProfile(slug) {
+  var payload = {
+    channel_slug: slug,
+    niche: ((document.getElementById('prof-niche-' + slug) || {}).value || '').trim(),
+    audience: ((document.getElementById('prof-audience-' + slug) || {}).value || '').trim(),
+    language: ((document.getElementById('prof-language-' + slug) || {}).value || '').trim(),
+    visual_mode: ((document.getElementById('prof-visual-' + slug) || {}).value || '').trim(),
+    channel_subtitle: ((document.getElementById('prof-subtitle-' + slug) || {}).value || '').trim(),
+  };
+
+  var statusEl = document.getElementById('prof-status-' + slug);
+  if (statusEl) statusEl.textContent = 'Saving...';
+
+  fetchJsonSafe('/api/channel-profiles/' + encodeURIComponent(slug), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(function(d) {
+    if (!d || !d.ok) throw new Error((d && d.error) || 'Save failed');
+    _channelProfileCache[slug] = d.profile || {};
+    if (statusEl) statusEl.textContent = 'Profile saved.';
+  }).catch(function(err) {
+    if (statusEl) statusEl.textContent = 'Save failed: ' + (err.message || err);
+  });
+}
+
 function populateChannelDropdown() {
   var sel = document.getElementById('pl-channel-select');
+  var queueSel = document.getElementById('queue-channel-select');
   var trendSel = document.getElementById('trending-channel-select');
   var studioSel = document.getElementById('stu-channel');
   var brandSel = document.getElementById('brand-channel-select');
   var healthSel = document.getElementById('health-channel-slug-sel');
-  if (!sel && !trendSel && !studioSel && !brandSel && !healthSel) return;
+  if (!sel && !queueSel && !trendSel && !studioSel && !brandSel && !healthSel) return;
   
   // Populate Pipeline upload channel selector
   if (sel) {
@@ -5112,6 +5203,19 @@ function populateChannelDropdown() {
         trendSel.appendChild(opt);
       });
     }
+  }
+
+  if (queueSel) {
+    queueSel.innerHTML = '<option value="">🌐 Default channel</option>';
+    if (_ytChannels.length > 0) {
+      _ytChannels.forEach(function(ch) {
+        var opt = document.createElement('option');
+        opt.value = ch.slug;
+        opt.textContent = (ch.name || ch.slug) + (ch.is_default ? ' (default)' : '');
+        queueSel.appendChild(opt);
+      });
+    }
+    queueSel.value = selectedChannelSlug || '';
   }
 
   if (studioSel) {

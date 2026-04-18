@@ -18,10 +18,11 @@ from config import (
     SCHEDULER_SHORTS_COUNT,
     VIDEOS_PER_WEEK,
 )
+from database import get_channel_profile
 from content_generator import generate_topic_ideas
 from pipeline import run
 from topic_queue import (
-    dequeue_topic,
+    dequeue_topic_item,
     enqueue_topics,
     mark_topic_done,
     mark_topic_failed,
@@ -96,15 +97,21 @@ def _resolve_publish_times() -> list[str]:
 
 def refill_queue() -> None:
     """Generate and enqueue new topics when the queue runs low."""
-    if pending_count() >= _REFILL_THRESHOLD:
+    if pending_count(channel_slug=_CHANNEL_SLUG) >= _REFILL_THRESHOLD:
         return
-    logger.info("Queue low — generating new topics...")
+    logger.info("Queue low — generating new topics (channel=%s)...", _CHANNEL_SLUG or "default")
     try:
-        topics = generate_topic_ideas(count=10)
+        profile = get_channel_profile(_CHANNEL_SLUG)
+        topics = generate_topic_ideas(
+            count=10,
+            niche=profile.get("niche"),
+            audience=profile.get("audience"),
+            language=profile.get("language"),
+        )
         if not topics:
             logger.warning("Queue refill returned no topics")
             return
-        added = enqueue_topics(topics)
+        added = enqueue_topics(topics, channel_slug=_CHANNEL_SLUG)
         logger.info("Added %d topics to the queue", added)
     except Exception as exc:
         logger.error("Queue refill failed: %s", exc)
@@ -113,23 +120,27 @@ def refill_queue() -> None:
 def publish_next() -> None:
     """Process the next topic from the queue."""
     refill_queue()
-    topic = dequeue_topic()
-    if not topic:
+    item = dequeue_topic_item(channel_slug=_CHANNEL_SLUG)
+    if not item:
         logger.warning("Queue empty — skipping this scheduled run")
         return
+    topic = item["topic"]
+    topic_id = item["id"]
+    effective_channel = _CHANNEL_SLUG or item.get("channel_slug")
     shorts_count = _scheduler_shorts_count()
     logger.info(
-        "Starting pipeline: %s (channel=%s, shorts=%d)",
+        "Starting pipeline: %s (queue_id=%s, channel=%s, shorts=%d)",
         topic,
-        _CHANNEL_SLUG or "default",
+        topic_id,
+        effective_channel or "default",
         shorts_count,
     )
     try:
-        run(topic, channel_slug=_CHANNEL_SLUG, shorts_count=shorts_count)
-        mark_topic_done(topic)
+        run(topic, channel_slug=effective_channel, shorts_count=shorts_count)
+        mark_topic_done(topic_id=topic_id)
     except Exception as exc:
         logger.error("Pipeline failed: %s", exc)
-        mark_topic_failed(topic)
+        mark_topic_failed(topic_id=topic_id)
 
 
 def _setup_schedule() -> None:
